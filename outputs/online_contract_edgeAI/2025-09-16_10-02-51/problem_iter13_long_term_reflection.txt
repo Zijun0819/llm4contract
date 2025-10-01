@@ -1,1 +1,0 @@
-Tighten cost bounds with epsilon slack. Normalize centroid probabilities; enforce linear constraints for costs. Minimize penalty weights; validate clustering stability. Simplify objective; ensure IR/IC via direct constraints, not penalties. Use 12 candidate actions; prioritize feasibility.

@@ -1,1 +1,0 @@
-Use robust, adaptive clustering (e.g., DBSCAN with elbow method) on outcome distributions and utilities; enforce IR/IC strictly via joint LPs; iteratively refine costs with margin adjustments; normalize probabilities rigorously; incorporate rejection constraints early; and integrate principal utility bounds for consistent, feasible agent settings.

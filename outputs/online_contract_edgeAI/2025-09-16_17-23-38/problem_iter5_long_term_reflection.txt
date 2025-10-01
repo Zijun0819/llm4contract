@@ -1,1 +1,0 @@
-Use adaptive clustering with PCA for dimensionality reduction, ensuring tight IR/IC cost bounds via minimum/maximum wages. Normalize probabilities post-clustering, validate distributions strictly, and apply regularization for numerical stability and non-negative costs. Leverage LP duality for feasibility and augment rejected contract constraints for robustness.

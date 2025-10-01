@@ -1,1 +1,0 @@
-Refine GMM with density-based centers from both accepted and rejected logs. Enforce strict IR/IC via penalized SLSQP, initializing costs from utility thresholds. Validate all logs iteratively with tightened tolerances.

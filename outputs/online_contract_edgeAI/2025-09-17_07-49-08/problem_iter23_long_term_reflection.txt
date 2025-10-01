@@ -1,2 +1,0 @@
-Refine `mini_lp_p` objective to maximize rejected contract utility (v-w). Improve cost initialization, considering accepted contracts. Enforce IR constraints post-clustering. Use `k-means++` with a fixed `random_state` and experiment with `n_init` for speed/stability.
-

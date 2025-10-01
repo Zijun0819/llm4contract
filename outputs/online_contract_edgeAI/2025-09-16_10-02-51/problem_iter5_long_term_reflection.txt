@@ -1,1 +1,0 @@
-Use Bayesian clustering to set cost bounds from log utilities, then refine costs using IR/IC constraints via penalty regularization. Enforce IR with accepted utility minus epsilon.

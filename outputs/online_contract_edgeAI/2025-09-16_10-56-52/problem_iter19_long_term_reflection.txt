@@ -1,1 +1,0 @@
-Refine GMM with weighted samples from all logs. Tighten IR/IC enforcement via adaptive penalties. Initialize costs using rejection data. Use stricter tolerances and enforce non-negativity for robust, accurate inference.

@@ -1,7 +1,0 @@
-[*] Running ...
-Traceback (most recent call last):
-  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 136, in <module>
-    _p, _c, _v, _contract_logs = extract_data(dataset_path)
-  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 108, in extract_data
-    with open("data.pkl", "rb") as f:
-FileNotFoundError: [Errno 2] No such file or directory: 'data.pkl'

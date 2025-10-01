@@ -1,1 +1,0 @@
-Cluster on inferred outcome distributions using adaptive, outcome-weighted DBSCAN with L1 normalization and elbow method; enforce strict IR/IC via LP with rejection margins; jointly optimize costs and probabilities; normalize probabilities carefully; assign noisy logs by nearest cluster; iteratively refine costs globally.

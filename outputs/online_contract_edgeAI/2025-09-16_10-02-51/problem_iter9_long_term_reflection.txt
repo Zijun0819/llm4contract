@@ -1,1 +1,0 @@
-Initialize costs above lower bounds with epsilon margins. Use linear penalties for IR/IC violations, enforced via constrained optimization. Refine GMM clustering with covariance_type='diag' and increased iterations. Prioritize stability with strict bounds from all logs, including rejections.

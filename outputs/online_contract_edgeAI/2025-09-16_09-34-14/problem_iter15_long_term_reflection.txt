@@ -1,1 +1,0 @@
-Optimize GaussianMixture with BIC, balance candidates, and regularize to infer better agent settings.

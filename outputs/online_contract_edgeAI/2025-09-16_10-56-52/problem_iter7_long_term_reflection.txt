@@ -1,1 +1,0 @@
-Use BIC-optimized GMM for action clustering. Tighten cost bounds via accepted/rejected logs. Enforce strict IC/IR via linear programming with minimal smoothing. Refine probabilities and costs using kernel methods to satisfy all constraints with precision.

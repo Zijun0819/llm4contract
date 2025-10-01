@@ -1,1 +1,0 @@
-Focus clustering on accepted contracts using unweighted KMeans for clearer action separation. Enforce strict, margin-tight IR/IC constraints via LP with exact equalities. Normalize probabilities after cost refinement. Robustly remove empty clusters early and adjust costs post-clustering to ensure feasibility and consistent agent utility.

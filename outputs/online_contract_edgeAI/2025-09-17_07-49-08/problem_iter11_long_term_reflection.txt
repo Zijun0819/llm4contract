@@ -1,2 +1,0 @@
-Maximize `n_candidates` (but limit with data size), increase KMeans `n_init`, and refine cost initialization using accepted contracts' utilities. Minimize agent's utility for rejected contracts in the objective. Consider principal's utility in `mini_lp_p`.
-

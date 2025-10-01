@@ -1,1 +1,0 @@
-Use adaptive weighted KMeans with elbow method for clustering, incorporate rejected contracts, enforce strict, margin-tight IR/IC via LP with exact equalities, normalize probabilities before cost refinement, remove empty clusters robustly, and adjust costs post-clustering to ensure consistent agent utility and feasibility.

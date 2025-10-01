@@ -1,1 +1,0 @@
-Use regularization techniques and optimal component selection to improve agent setting inference, but consider removing L1 and L2 regularization for simpler cost calculation.

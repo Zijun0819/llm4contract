@@ -1,1 +1,0 @@
-Sharpen cost bounds by leveraging all logs, especially rejections. Use linear programming for probabilities. Tighten IC constraints with higher penalty weights. Optimize with SLSQP, smart initialization, and efficient clustering for robust convergence.

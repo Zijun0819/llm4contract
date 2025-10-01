@@ -1,1 +1,0 @@
-Use adaptive DBSCAN eps with validated min_samples and silhouette balance; tighten LP tolerances strictly; refine costs with smaller increments; normalize probabilities and costs rigorously; assign noise via cosine similarity; increase iterations with early stopping on cost stability to ensure robust, precise, and stable agent setting inference.

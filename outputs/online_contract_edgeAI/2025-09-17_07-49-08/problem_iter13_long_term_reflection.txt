@@ -1,2 +1,0 @@
-Increase `n_candidates`. Refine `mini_lp_p` with principal utility. Use accepted/rejected contracts to initialize costs, ensuring IR/IC. Consider rejected contracts in candidate generation and objective.
-

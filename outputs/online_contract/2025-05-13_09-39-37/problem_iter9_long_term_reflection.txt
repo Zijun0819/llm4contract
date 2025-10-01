@@ -1,1 +1,0 @@
-Prioritize adaptive hierarchical clustering with cosine similarity and silhouette checks; initialize costs via LP with tight IR/IC margins; iteratively refine costs using small gradient steps; carefully assign noise points; jointly enforce strict IR and IC constraints; incorporate rejected logs cautiously to enhance stability.

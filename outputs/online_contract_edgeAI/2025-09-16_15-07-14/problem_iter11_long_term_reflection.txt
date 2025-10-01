@@ -1,1 +1,0 @@
-Refine with 500+ GMM clusters, enforce strict IR/IC via epsilon-tight cost bounds from min utilities, and use robust probability normalization for better type inference and utility compliance.

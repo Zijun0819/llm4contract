@@ -1,1 +1,0 @@
-[2025-05-10 16:54:10,544][httpx][INFO] - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"

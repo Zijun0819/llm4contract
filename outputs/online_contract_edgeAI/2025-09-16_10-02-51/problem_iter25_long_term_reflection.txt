@@ -1,1 +1,0 @@
-Tighten cost bounds using all logs. Enforce stricter IC. Optimize with L-BFGS-B, squaring penalties for stability. Refine GMM centroids using 'diag' covariance and more iterations. Prioritize explicit IR checks and feasibility.

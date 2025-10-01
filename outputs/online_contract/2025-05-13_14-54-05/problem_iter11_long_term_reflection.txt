@@ -1,1 +1,0 @@
-Cluster contracts by outcome or payment vectors using adaptive KMeans with inertia elbow; enforce strict IR/IC with tight LP margins including rejected contracts; normalize probabilities post-clustering carefully; weight clustering by utility or frequency; iteratively refine costs ensuring strict inequalities and handle empty clusters robustly.

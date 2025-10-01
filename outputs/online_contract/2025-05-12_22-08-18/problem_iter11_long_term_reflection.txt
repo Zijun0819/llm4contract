@@ -1,1 +1,0 @@
-Focus on precise probability normalization and enforce strict rejection cost margins via LP. Add minimal per-contract dummy actions for unexplained accepts, weight clustering by principal utility variance, and iteratively refine costs and IC constraints for robust, globally feasible agent settings.

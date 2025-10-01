@@ -1,2 +1,0 @@
-Refine cost initialization: maximize cost based on rejected contracts' expected utility. Minimize agent's EU in `mini_lp_p`. Increase `n_candidates` but cap KMeans clusters using `min(n_candidates, len(all_p))`.
-

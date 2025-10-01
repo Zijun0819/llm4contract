@@ -1,2 +1,0 @@
-Refine `mini_lp_p` with `-v + w` and `-utility`. Use `k-means++` initialization. Ensure non-negative costs via `np.maximum(0, c)` and enforce IR constraints in post-processing. Maximize rejected contract utility in the objective.
-

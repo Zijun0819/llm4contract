@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 13, in <module>
-    from problems.online_contract_edgeAI import gpt
-  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py", line 57
-    dists = [np.linalg.norm(p - solve_p(w, log['Principal Utility']) if solve_p(w, log['Principal Utility']) is not None else np.inf for p in p0]
-                                                                                                                                                ^
-SyntaxError: closing parenthesis ']' does not match opening parenthesis '('

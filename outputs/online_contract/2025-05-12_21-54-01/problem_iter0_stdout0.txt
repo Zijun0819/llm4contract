@@ -1,5 +1,0 @@
-[*] Running ...
-[*] Dataset loaded: E:\Coding\pythonProject\llm4contract/problems\dataset\train_01.pkl with 5 instances.
-→ Best principal utility: 4.03773573646638
-→ Best action index:    98
-→ Best contract w:       [0.94877393 0.         0.         4.06570984 4.98148626]

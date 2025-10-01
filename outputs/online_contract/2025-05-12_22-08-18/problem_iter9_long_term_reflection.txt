@@ -1,1 +1,0 @@
-Enforce strict global IR/IC and rejection margins via LP with tight cost bounds. Use adaptive, average linkage clustering weighted by principal utility. Add minimal dummy actions clustered by unexplained contracts. Iteratively refine costs and normalize probabilities precisely for robust, feasible agent settings.

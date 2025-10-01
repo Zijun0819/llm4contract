@@ -1,1 +1,0 @@
-Increase KMeans `n_init` to 20 for stable clustering, use stricter slack (1e-8) for tighter IR/IC constraints, assign actions via utility maximization for all contracts, ensure positive costs with wage-based regularization, and apply PCA only when sufficient data exists to avoid overfitting.

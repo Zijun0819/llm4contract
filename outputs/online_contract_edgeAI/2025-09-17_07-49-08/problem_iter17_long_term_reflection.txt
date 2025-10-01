@@ -1,2 +1,0 @@
-Refine `mini_lp_p` with principal's reward. Maximize agent utility for rejected contracts. Increase `n_candidates` and use `np.mean` for cost initialization. Consider agent's outside option in cost setting. Correct utility difference calculation.
-

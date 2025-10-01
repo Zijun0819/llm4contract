@@ -1,1 +1,0 @@
-Increase KMeans `n_init` for stable clustering, use stricter slack (e.g., 1e-10) for tighter IR/IC constraints, ensure positive costs via wage-based regularization, apply PCA only with sufficient data, and refine action assignment using utility thresholds. Leverage rejected contracts to strengthen IC constraints and improve overall agent setting inference.

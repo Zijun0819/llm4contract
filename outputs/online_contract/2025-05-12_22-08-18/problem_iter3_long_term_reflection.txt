@@ -1,1 +1,0 @@
-Cluster contracts by utility or outcomes, jointly optimize distributions and costs with strict IR/IC/rejection LP or QP constraints, adapt clusters and action counts to data complexity, normalize probabilities precisely, and iteratively refine costs ensuring robust, globally consistent agent settings.

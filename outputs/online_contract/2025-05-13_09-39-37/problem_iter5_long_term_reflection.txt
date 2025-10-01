@@ -1,1 +1,0 @@
-Jointly cluster accepted and rejected logs using adaptive metrics (cosine or Euclidean) with silhouette or elbow methods; iteratively refine costs enforcing strict IR/IC via LP feasibility; adjust costs to maintain positive agent utility margins; prefer stable clustering (hierarchical or KMeans) for robust agent setting inference.

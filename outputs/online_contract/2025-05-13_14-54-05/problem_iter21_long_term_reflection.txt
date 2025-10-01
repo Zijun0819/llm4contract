@@ -1,1 +1,0 @@
-Enforce tighter IR/IC margins with smaller tolerances; normalize contracts and probabilities before and after cost updates; apply adaptive clustering using refined elbow detection; robustly detect and remove empty clusters early; iteratively adjust costs for strict IR/IC satisfaction ensuring numeric stability.

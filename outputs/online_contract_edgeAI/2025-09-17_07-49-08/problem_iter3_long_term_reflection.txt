@@ -1,2 +1,0 @@
-Prioritize principal's utility in the LP. Refine agent costs using acceptance/rejection data and cluster proximity. Employ fewer clusters and strict consistency checks. Adaptive k-means or GMM can improve type discovery.
-

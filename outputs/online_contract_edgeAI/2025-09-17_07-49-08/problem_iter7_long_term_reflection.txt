@@ -1,2 +1,0 @@
-Prioritize accepted contracts in cost optimization, using principal utility in the LP. Refine cost initialization and increase `n_candidates`. Minimize utility for accepted contracts and maximize for rejected ones. Consider fewer candidate actions and K-means clustering.
-
