@@ -1,0 +1,1 @@
+Use DBSCAN with min_samples 1–3 and a finer eps grid for balanced clustering. Tighten LP tolerances and apply strict probability normalization. Increment costs adaptively with smaller steps and early stopping. Assign noise robustly via similarity metrics and implement stable tie-breaking to ensure precise IR/IC satisfaction and higher principal utility.

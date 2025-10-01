@@ -1,0 +1,23 @@
+1. Use more initial clusters (n_candidates=10) for better coverage.  
+2. Increase KMeans n_init to 20 for stable clustering.  
+3. Simplify cost computation using min(wages) for tighter IR constraints.  
+4. Avoid post-hoc cost adjustments; integrate constraints directly.  
+5. Maintain numerical stability with small slack (1e-6).
+Use elbow method for clustering, ensure non-negative costs, and handle numerical stability with proper slack values.
+Use PCA for dimensionality reduction, adaptive clustering with elbow method, and refined cost computation with regularization.
+1. Use fixed candidate number for stable clustering.  
+2. Normalize probabilities post-clustering.  
+3. Compute costs using min/max wages for IR/IC.  
+4. Ensure non-negative costs with slack.
+Use PCA for dimensionality reduction before clustering to improve agent setting inference.
+Use PCA for dimensionality reduction, adaptive clustering with elbow method, and ensure strict positivity of costs for accepted contracts.
+Use PCA for better clustering, ensure valid probability normalization, and carefully handle cost constraints.
+1. Avoid PCA before clustering; work directly in outcome space for better fidelity.  
+2. Use `np.min(wages, axis=1)` for tighter IR constraint estimation.  
+3. Simplify cost adjustments; avoid redundant post-hoc corrections.
+Use adaptive clustering, ensure IR/IC feasibility, and refine cost estimation with regularization.
+1. **Improve PCA dimensionality reduction** by ensuring sufficient components for variance retention.  
+2. **Refine clustering** with better initialization and validation metrics.  
+3. **Enhance assignment logic** using utility maximization rather than Euclidean distance.  
+4. **Strengthen cost inference** with tighter IR and IC constraint handling.  
+5. **Add regularization** to ensure robust, generalizable agent strategies.

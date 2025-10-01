@@ -1,0 +1,54 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.7221 seconds
+→ Best principal utility: 0.0003502930645783494
+→ The corresponding best action is: 11
+→ The corresponding agent utility is: 1.0001765041178778e-16
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0005853791133211418
+→ The corresponding best action is: 5
+→ The corresponding agent utility is: 2.6778017596500002e-05
+→ The principal utility gap is: 0.0006193891649213826-0.0005853791133211418=3.40100516002408e-05
+→ Agent and principal score:    0 3.40100516002408e-05
+[*] Instance 0: 3.40100516002408e-05
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.0973 seconds
+→ Best principal utility: 0.0003347790594027116
+→ The corresponding best action is: 63
+→ The corresponding agent utility is: 1.0001765041178778e-16
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0005877592705086682
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 3.162989441281432e-05
+→ The principal utility gap is: 0.0006193891649213826-0.0005877592705086682=3.162989441271439e-05
+→ Agent and principal score:    0 3.162989441271439e-05
+[*] Instance 1: 3.162989441271439e-05
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.1313 seconds
+→ Best principal utility: 0.00032976625434321457
+→ The corresponding best action is: 63
+→ The corresponding agent utility is: 1.0001765041178778e-16
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0004893244478482524
+→ The corresponding best action is: 1
+→ The corresponding agent utility is: 6.142081240720565e-05
+→ The principal utility gap is: 0.0006193891649213826-0.0004893244478482524=0.0001300647170731302
+→ Agent and principal score:    0 0.0001300647170731302
+[*] Instance 2: 0.0001300647170731302
+[*] Average:
+6.523488769536179e-05

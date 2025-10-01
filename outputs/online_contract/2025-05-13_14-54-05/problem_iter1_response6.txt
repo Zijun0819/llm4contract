@@ -1,0 +1,118 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions × [p_1,...,p_5,cost])
+    that explains all historical logs (accept/reject) under IR and IC constraints.
+    """
+    # Parameters
+    m = v.shape[0]  # number of outcomes (5)
+    L = len(content)  # number of logs
+
+    # Extract data arrays for convenience
+    contracts = np.array([log['Contract'] for log in content])  # L x m
+    agent_actions = np.array([log['Agent Action'] for log in content])  # L
+    principal_utils = np.array([log['Principal Utility'] for log in content])  # L
+
+    # Step 1: Initial guess for number of agent actions (clusters)
+    # Use elbow method or just pick 5-10 clusters adaptively
+    max_actions = min(10, max(2, L // 15))
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    # If no accepted logs, fallback to trivial agent setting (single action uniform)
+    if accepted_idx.size == 0:
+        uniform_p = np.ones(m) / m
+        return np.hstack([uniform_p.reshape(1, -1), np.array([[0.0]])])
+
+    # Step 2: Estimate agent outcome distributions p for accepted logs
+    # For each accepted log, solve LP:
+    # Find p >=0, sum p=1, s.t. p·(w) - c >= 0 (agent utility ≥ 0)
+    # Use minimal cost c = p·w - agent utility (principal utility known, but agent utility unknown).
+    # Actually, agent utility unknown, but acceptance => p·w - c ≥ 0,
+    # we approximate p by assuming p·w = principal utility + c (unknown).
+    # Instead, we solve for p that best fits contract and acceptance
+
+    # To get plausible p vectors, solve LP for each accepted log:
+    # We want p s.t. p·w = u + c, but c unknown, so minimize distance from p·w to principal utility + offset
+    # Instead, we use the contract vector w as proxy and cluster contracts weighted by v,
+    # then refine p via LP that matches p·v close to principal utility + c.
+
+    # We adopt a heuristic: cluster accepted contracts weighted by v
+    # to get initial p (probability distributions) then refine costs
+
+    # Weight contracts by v (expected value of contract)
+    contract_values = contracts[accepted_idx] @ v
+    w_for_clustering = contracts[accepted_idx] / (contract_values[:, None] + 1e-8)
+
+    # Run KMeans clustering on normalized contracts to get p0 candidates
+    n_clusters = max_actions
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=20).fit(w_for_clustering)
+    p0 = kmeans.cluster_centers_
+
+    # Normalize cluster centers to be proper distributions (≥0, sum=1)
+    p0 = np.clip(p0, 0, None)
+    p0 = p0 / p0.sum(axis=1, keepdims=True)
+
+    # Step 3: Assign each accepted log to closest cluster center p0 by expected payment similarity
+    assigns = -np.ones(L, dtype=int)
+    for i in accepted_idx:
+        w = contracts[i]
+        # Score each action by expected payment p0 @ w
+        scores = p0 @ w
+        assigns[i] = int(np.argmax(scores))
+
+    # Step 4: For each candidate action, estimate cost c to ensure IR:
+    # IR: For all logs assigned to action a: agent utility = p_a·w - c_a >= 0
+    # => c_a ≤ min_{i assigned a} p_a·w_i
+    c_ir = np.zeros(n_clusters)
+    for a in range(n_clusters):
+        idx_a = np.where(assigns == a)[0]
+        if len(idx_a) == 0:
+            c_ir[a] = 0.0
+        else:
+            vals = p0[a] @ contracts[idx_a].T
+            c_ir[a] = np.min(vals)
+
+    # Step 5: Enforce rejection consistency (IC)
+    # For rejected logs j: agent utility = p_a·w_j - c_a < 0 for all actions a
+    # => c_a > max_{rejected j} p_a·w_j
+    if rejected_idx.size > 0:
+        rej_vals = p0 @ contracts[rejected_idx].T  # shape (n_clusters, |rejected|)
+        max_rej = rej_vals.max(axis=1)
+    else:
+        max_rej = np.zeros(n_clusters)
+
+    # Step 6: Final cost per action must satisfy both IR and rejection constraints:
+    # c_a ≥ max( c_ir[a], max_rej[a] + ε )
+    epsilon = 1e-6
+    c_final = np.maximum(c_ir, max_rej + epsilon)
+    c_final = np.clip(c_final, 0, None)  # costs must be non-negative
+
+    # Step 7: Verify all accepted logs have non-negative agent utility under assigned action
+    for i in accepted_idx:
+        a = assigns[i]
+        u_agent = p0[a] @ contracts[i] - c_final[a]
+        if u_agent < -1e-8:
+            # If violated, reduce cost slightly to fix
+            c_final[a] = min(c_final[a], p0[a] @ contracts[i])
+
+    # Step 8: Check all rejected logs have negative utility for all actions
+    if rejected_idx.size > 0:
+        for j in rejected_idx:
+            utilities = p0 @ contracts[j] - c_final
+            if np.any(utilities >= 0):
+                # If violated, increase cost for violating actions slightly
+                violating = np.where(utilities >= 0)[0]
+                c_final[violating] = np.maximum(c_final[violating], (p0[violating] @ contracts[j]) + epsilon)
+
+    # Step 9: Return agent setting: rows = actions, cols = [p1,...,p5,cost]
+    agent_setting = np.hstack([p0, c_final[:, None]])
+
+    return agent_setting
+```

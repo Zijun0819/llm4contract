@@ -1,0 +1,1 @@
+Use 50 clusters; assign costs as min utility per cluster. Stricter IR via positive slack; IC from max-rejected utilities. Refine with adaptive clustering and GMM for robust bounds.

@@ -1,0 +1,106 @@
+```python
+import numpy as np
+from scipy.optimize import minimize, Bounds
+from sklearn.mixture import GaussianMixture
+
+def agent_solver_v2(v: np.ndarray, content: list) -> np.ndarray:
+    m_outcomes = len(v)
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs and not rejected_logs:
+        return np.zeros((1, m_outcomes + 1))
+    
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])
+    accepted_utils = np.array([log['Principal Utility'] for log in accepted_logs])
+    
+    p_list = []
+    for i, w in enumerate(accepted_contracts):
+        u_p = accepted_utils[i]
+        c = -w
+        A_eq = np.vstack([np.ones(m_outcomes), v])
+        b_eq = np.array([1, u_p])
+        bounds = [(0, 1)] * m_outcomes
+        try:
+            res = minimize(lambda p: np.dot(c, p), np.ones(m_outcomes)/m_outcomes, 
+                          constraints=[{'type': 'eq', 'fun': lambda p: np.sum(p) - 1},
+                                      {'type': 'eq', 'fun': lambda p: np.dot(v, p) - u_p}],
+                          bounds=bounds, method='trust-constr')
+            if res.success:
+                p_list.append(res.x)
+        except:
+            continue
+    
+    if not p_list:
+        p_list = [np.ones(m_outcomes) / m_outcomes]
+    
+    p_array = np.array(p_list)
+    n_candidates = min(12, len(p_list))
+    if n_candidates > 0:
+        gmm = GaussianMixture(n_components=n_candidates, random_state=42)
+        gmm.fit(p_array)
+        p_centroids = gmm.means_
+    else:
+        p_centroids = np.ones((1, m_outcomes)) / m_outcomes
+    
+    n_actions = len(p_centroids)
+    
+    def ic_constraint(costs, a, p_a, other_ps):
+        constraints = []
+        for p_j in other_ps:
+            constraints.append(np.dot(p_a, w) - costs[a] - (np.dot(p_j, w) - costs[j]) for j, w in enumerate(accepted_contracts))
+        return np.array(constraints)
+    
+    def objective(costs):
+        violation = 0.0
+        penalty_weight = 1000.0
+        for log in content:
+            w = np.array(log['Contract'])
+            utils = np.array([np.dot(p_centroids[a], w) - costs[a] for a in range(n_actions)])
+            max_util = np.max(utils)
+            if log['Agent Action'] == 1:
+                if max_util < 0:
+                    violation += penalty_weight * (-max_util)
+                best_action = np.argmax(utils)
+                for a in range(n_actions):
+                    if a != best_action:
+                        violation += penalty_weight * max(0, (np.dot(p_centroids[a], w) - costs[a]) - (max_util - costs[best_action]))
+            else:
+                if max_util >= 0:
+                    violation += penalty_weight * max_util
+        return violation
+    
+    cost_lower_bounds = np.zeros(n_actions)
+    for a in range(n_actions):
+        p_a = p_centroids[a]
+        min_util = np.inf
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            agent_util = np.dot(p_a, w)
+            if agent_util >= 0:
+                min_util = min(min_util, agent_util)
+        cost_lower_bounds[a] = max(0, min_util - 1e-6) if min_util != np.inf else 0.0
+    
+    constraints = []
+    for a in range(n_actions):
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            constraints.append({'type': 'ineq', 'fun': lambda x, a=a, w=w: np.dot(p_centroids[a], w) - x[a]})
+    
+    bounds = Bounds(cost_lower_bounds, np.full(n_actions, np.inf))
+    x0 = cost_lower_bounds + 1e-6
+    
+    best_result = None
+    best_violation = np.inf
+    for _ in range(5):
+        res = minimize(objective, x0, method='SLSQP', bounds=bounds, constraints=constraints, options={'maxiter': 1000})
+        if res.success and res.fun < best_violation:
+            best_result = res
+            best_violation = res.fun
+        x0 = np.random.uniform(cost_lower_bounds, cost_lower_bounds + 0.1, n_actions)
+    
+    final_costs = best_result.x if best_result is not None else cost_lower_bounds
+    
+    agent_setting = np.hstack([p_centroids, final_costs.reshape(-1, 1)])
+    return agent_setting
+```

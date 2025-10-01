@@ -1,0 +1,15 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 158, in <module>
+    obj = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 102, in evaluate_llm
+    inferred_agent_setting = llm_agent_solver(v, content)
+  File "E:\Coding\pythonProject\llm4contract\problems\gpt.py", line 59, in agent_solver
+    
+  File "E:\Coding\pythonProject\llm4contract\problems\gpt.py", line 59, in <listcomp>
+    
+  File "E:\Coding\pythonProject\llm4contract\problems\gpt.py", line 46, in solve_p_for_accept
+    res = linprog(c=np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+NameError: free variable 'linprog' referenced before assignment in enclosing scope

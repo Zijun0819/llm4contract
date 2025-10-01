@@ -1,0 +1,187 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import DBSCAN
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infers an agent setting matrix (actions 〜 (outcomes + 1)) from the
+    principal reward vector v and historical contract interaction logs.
+    
+    Parameters:
+    - v: principal's reward vector for 5 outcomes, shape (5,)
+    - content: DataFrame with columns:
+        'Contract': list of 5 payments,
+        'Principal Utility': float,
+        'Agent Action': 1 if accepted, -1 if rejected
+    
+    Returns:
+    - agent_setting: n x 6 matrix with 
+      first 5 cols = agent outcome probabilities for each action (sum to 1),
+      6th col = agent cost (nonnegative)
+    """
+    m = v.shape[0]  # number outcomes
+    logs = content.copy()
+    
+    # Parse contracts and prepare data arrays
+    contracts = np.array(logs['Contract'].to_list())  # shape (L, m)
+    p_utils = logs['Principal Utility'].values        # shape (L,)
+    a_actions = logs['Agent Action'].values            # shape (L,)
+    L = len(logs)
+
+    # Step 1: Use accepted contracts only to infer candidate actions
+    acc_idx = np.where(a_actions == 1)[0]
+    rej_idx = np.where(a_actions == -1)[0]
+    if len(acc_idx) == 0:
+        raise ValueError("No accepted contracts, cannot infer agent.")
+
+    # Step 2: For accepted logs, attempt to infer outcome distribution p
+    # Solve min cost LP to find p satisfying:
+    #  sum(p) = 1, p−0
+    #  expected wage payoff to agent >= agent cost (unknown)
+    # but we don't know cost; each accepted contract implies
+    # existence of p with agent utility >=0, thus for some agent cost c:
+    #   p，w - c >= 0 => c <= p，w
+    # We invert argument: Try to find p explaining all accepted contract preferences
+    # We'll solve feasibility LPs to find plausible outcome distributions p per accepted contract
+    
+    def find_p(w, threshold=1e-9):
+        # Find p s.t sum(p)=1, p>=0 and p，w >= some lower bound
+        # Just return p that maximizes min distance to uniform or random guess?
+        # The direct method: take p proportional to w, normalized
+        p = np.array(w)
+        p = p / np.sum(p) if np.sum(p) > 0 else np.ones_like(p) / len(p)
+        # Ensure feasibility:
+        if (p < 0).any() or (abs(p.sum() - 1) > threshold):
+            # fallback equal distribution
+            p = np.ones_like(w) / len(w)
+        return p
+
+    p_candidates = []
+    for i in acc_idx:
+        w = contracts[i]
+        p = find_p(w)
+        p_candidates.append(p)
+    p_candidates = np.array(p_candidates)  # shape (#accepted, m)
+
+    # Step 3: Cluster discovered outcome distributions to identify latent actions
+    # Use a density-based method (DBSCAN) to determine number of action types automatically
+    # Parameters tuned to cluster similar outcome distributions adaptively
+    clustering = DBSCAN(eps=0.15, min_samples=3, metric='cosine').fit(p_candidates)
+    labels = clustering.labels_  # -1 means noise points
+
+    # Filter noise (label = -1); assign to closest cluster via cosine or Euclidean similarity
+    unique_labels = set(labels)
+    # If all noise, treat all as one cluster
+    if unique_labels == {-1}:
+        # fallback: use entire set as one cluster
+        cluster_centers = np.mean(p_candidates, axis=0, keepdims=True)
+        labels = np.zeros_like(labels)
+    else:
+        # compute cluster centers
+        cluster_centers = []
+        for lb in sorted(unique_labels):
+            if lb == -1:
+                continue
+            idxs = np.where(labels == lb)[0]
+            center = np.mean(p_candidates[idxs], axis=0)
+            center = center / center.sum()
+            cluster_centers.append(center)
+        cluster_centers = np.vstack(cluster_centers)
+        # Assign noise points to nearest cluster center by cosine sim
+        noise_mask = labels == -1
+        if noise_mask.any():
+            noise_points = p_candidates[noise_mask]
+            norm_centers = cluster_centers / np.linalg.norm(cluster_centers, axis=1, keepdims=True)
+            norm_noises = noise_points / np.linalg.norm(noise_points, axis=1, keepdims=True)
+            sims = norm_noises @ norm_centers.T  # cosine similarity
+            assign_labels = np.argmax(sims, axis=1)
+            # Assign noise labels back
+            new_labels = labels.copy()
+            for idx, assign_lb in zip(np.where(noise_mask)[0], assign_labels):
+                new_labels[idx] = assign_lb
+            labels = new_labels
+
+    n_actions = cluster_centers.shape[0]
+
+    # Step 4: Estimate agent costs for inferred actions
+    # The agent's cost for action a must satisfy:
+    #  For accepted contracts i assigned to action a:
+    #    p_a，w_i - cost_a >= 0  (agent IR)
+    #  For rejected contracts j:
+    #    p_a，w_j - cost_a < 0   (agent IC for rejection)
+    # We'll set cost as maximum lower bound c_i revealed by accepted contracts,
+    # but cost less than minimum p_a，w over rejected contracts.
+    
+    # Assign accepted contracts to actions by maximum dot product similarity with cluster_centers
+    assigned_actions = np.full(L, -1, dtype=int)
+    norm_centers = cluster_centers / np.linalg.norm(cluster_centers, axis=1, keepdims=True)
+    norm_acc_p = p_candidates / np.linalg.norm(p_candidates, axis=1, keepdims=True)
+    # accepted contracts to label mapping
+    for idx, p_act, lab in zip(acc_idx, norm_acc_p, labels):
+        assigned_actions[idx] = lab if lab != -1 else 0  # force fallback
+
+    # For contracts not in accepted, assign best action w.r.t cluster center and contract wage
+    for idx in rej_idx:
+        w = contracts[idx]
+        # Compute expected agent payoffs for each action: p，w
+        payoffs = cluster_centers @ w
+        assigned_actions[idx] = np.argmax(payoffs)
+
+    costs = np.zeros(n_actions)
+    for a in range(n_actions):
+        acc_i = np.where(assigned_actions == a)[0]
+        if len(acc_i) == 0:
+            costs[a] = 0.0
+            continue
+        # Minimum agent payoff on accepted for action a
+        payoffs_acc = contracts[acc_i] @ cluster_centers[a]
+        lb_cost = np.min(payoffs_acc)  # cost ＋ payoff
+        # Upper bound: agent cost must be > max payoff of rejected contracts for action a
+        rej_i = [i for i in rej_idx if assigned_actions[i] == a]
+        if len(rej_i) > 0:
+            payoffs_rej = contracts[rej_i] @ cluster_centers[a]
+            ub_cost = np.max(payoffs_rej)  # cost > payoff for rejection
+            cost_a = max(lb_cost, ub_cost + 1e-6)
+        else:
+            cost_a = lb_cost
+        costs[a] = max(cost_a, 0.0)
+
+    # Step 5: Clean and normalize cluster_centers to sum to 1 for probabilities
+    p_final = cluster_centers.copy()
+    p_final = np.clip(p_final, 1e-8, None)  # avoid zeros for numerical issues
+    p_final /= p_final.sum(axis=1, keepdims=True)
+    costs = np.maximum(costs, 0.0)
+
+    # Step 6: Check IR and IC consistency with inferred agent setting
+    # If inconsistency, adjust costs upward to fix violations
+    all_inconsistent = True
+    iter_max = 10
+    iter_count = 0
+    while all_inconsistent and iter_count < iter_max:
+        all_inconsistent = False
+        iter_count += 1
+        # Re-check IR for accepted contracts
+        for i in acc_idx:
+            a = assigned_actions[i]
+            p_a = p_final[a]
+            c_a = costs[a]
+            if np.dot(p_a, contracts[i]) - c_a < -1e-8:
+                costs[a] = np.dot(p_a, contracts[i])
+                all_inconsistent = True
+        # Re-check IC for rejected contracts
+        for i in rej_idx:
+            a = assigned_actions[i]
+            p_a = p_final[a]
+            c_a = costs[a]
+            if np.dot(p_a, contracts[i]) - c_a >= 0:
+                costs[a] = np.dot(p_a, contracts[i]) + 1e-6
+                all_inconsistent = True
+    costs = np.maximum(costs, 0)
+
+    # Step 7: Compose final agent setting matrix n_actions x (m+1)
+    agent_setting = np.hstack([p_final, costs[:, np.newaxis]])
+    return agent_setting
+```

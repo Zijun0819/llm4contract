@@ -1,0 +1,10 @@
+Use LP for global IR/IC enforcement, weighted clustering centroids, dummy actions for unexplained acceptances, iterative cost tightening, and precise probability normalization.
+Use LP to globally enforce IR/IC, add dummy actions matching unexplained contracts, refine costs iteratively, and normalize probabilities precisely.
+Use weighted clustering with principal utility; add minimal dummy actions; refine costs via LP enforcing strict IR/IC; normalize precisely; prefer average linkage clustering.
+Use adaptive clustering with weighted centroids, enforce strict IR/IC via tight cost margins, iteratively add actions for unexplained contracts, normalize probabilities robustly.
+Use weighted clustering emphasizing high-utility contracts, dynamically add actions to cover unexplained contracts, and strictly enforce rejection margin on costs.
+Use adaptive clustering with utility-weighted centroids, minimal dummy actions clustered by unexplained contracts, and strictly enforce IR, IC, and rejection margins.
+Incorporate LP-based global IR & IC enforcement, adaptive clustering, weighted centroids, add unexplained actions, and rigorously adjust costs for rejection margins.
+Use stable clustering (average linkage), weight contracts by principal utility, enforce tighter rejection cost bounds, and add unexplained acceptance actions adaptively.
+Focus on strict rejection margins, adaptive clustering counts, weighted centroids by principal utility, incremental action addition, and careful probability simplex normalization.
+Increase cluster adaptivity, weight accepted contracts by utilities, minimize dummy actions via clustering, and tighten cost bounds enforcing IR, IC, and rejection constraints robustly.

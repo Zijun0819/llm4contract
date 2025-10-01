@@ -1,0 +1,76 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    n_actions = 10
+    m_outcomes = len(v)
+    L = len(content)
+
+    def infer_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        """Infer agent's outcome distribution p from accepted contract."""
+        c = np.zeros(m_outcomes)
+        A_eq = np.array([np.ones(m_outcomes), v - w])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1)] * m_outcomes
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    # Step 1: Collect all inferred distributions for accepted contracts
+    candidate_ps = []
+    for _, log in content.iterrows():
+        if log['Agent Action'] == 1:
+            w_i = np.array(log['Contract'])
+            u_i = log['Principal Utility']
+            p_i = infer_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+
+    if not candidate_ps:
+        raise ValueError("No valid accepted contracts found.")
+
+    all_p = np.array(candidate_ps)
+
+    # Step 2: Cluster outcome distributions into n_actions
+    kmeans = KMeans(n_clusters=n_actions, random_state=42, n_init=10).fit(all_p)
+    p_centers = kmeans.cluster_centers_
+    labels = kmeans.labels_
+
+    # Step 3: Assign each accepted log to a clustered action
+    action_assign = np.full(L, -1, dtype=int)
+    idx_accepted = 0
+    for i, (_, log) in enumerate(content.iterrows()):
+        if log['Agent Action'] == 1:
+            action_assign[i] = labels[idx_accepted]
+            idx_accepted += 1
+
+    # Step 4: Estimate cost to satisfy IR constraint for each action
+    c_ir = np.zeros(n_actions)
+    for a in range(n_actions):
+        assigned_idx = np.where(action_assign == a)[0]
+        if len(assigned_idx) > 0:
+            wages = np.array([content.iloc[i]['Contract'] for i in assigned_idx]).T
+            c_ir[a] = p_centers[a] @ wages.min(axis=1)
+        else:
+            c_ir[a] = 0.0
+
+    # Step 5: Adjust for rejections by maximizing over possible action utilities
+    c_rej = np.zeros(n_actions)
+    rej_indices = content[content['Agent Action'] == -1].index
+    if len(rej_indices) > 0:
+        w_rej = np.array([content.loc[i, 'Contract'] for i in rej_indices]).T
+        utils_rej = p_centers @ w_rej
+        c_rej = np.max(utils_rej, axis=1)
+    else:
+        c_rej = np.zeros(n_actions)
+
+    # Step 6: Final costs are maximum of IR and rejection thresholds
+    c_final = np.maximum(c_ir, c_rej)
+
+    # Step 7: Construct final agent setting
+    agent_setting = np.hstack([p_centers, c_final[:, np.newaxis]])
+    return agent_setting
+```

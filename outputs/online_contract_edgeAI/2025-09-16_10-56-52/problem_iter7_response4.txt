@@ -1,0 +1,135 @@
+```python
+import numpy as np
+from scipy.optimize import minimize, linprog
+from sklearn.mixture import GaussianMixture
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = len(v)
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if len(accepted_logs) == 0:
+        raise ValueError("No accepted contracts in logs")
+    
+    n_candidates = min(20, max(3, len(accepted_logs) // 5))
+    
+    def solve_probability_vector(w, u_target):
+        c = -w
+        A_eq = np.vstack([np.ones(m_outcomes), v - w])
+        b_eq = np.array([1.0, u_target])
+        bounds = [(0, 1) for _ in range(m_outcomes)]
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_probs = []
+    for log in accepted_logs:
+        p = solve_probability_vector(np.array(log['Contract']), log['Principal Utility'])
+        if p is not None:
+            candidate_probs.append(p)
+    
+    if not candidate_probs:
+        candidate_probs = [np.ones(m_outcomes) / m_outcomes]
+    
+    X = np.array(candidate_probs)
+    if len(X) > n_candidates:
+        bics = []
+        gmm_models = []
+        for n in range(1, min(11, len(X))):
+            gmm = GaussianMixture(n_components=n, random_state=0, n_init=10, max_iter=200)
+            gmm.fit(X)
+            bics.append(gmm.bic(X))
+            gmm_models.append(gmm)
+        best_n = np.argmin(bics) + 1
+        best_gmm = gmm_models[best_n-1]
+        p_means = best_gmm.means_
+        labels = best_gmm.predict(X)
+    else:
+        p_means = X
+        labels = np.arange(len(X))
+    
+    n_actions = len(p_means)
+    
+    min_accept_utils = np.full(n_actions, np.inf)
+    max_reject_utils = np.full(n_actions, -np.inf)
+    
+    for idx, log in enumerate(accepted_logs):
+        w = np.array(log['Contract'])
+        if idx < len(labels):
+            a_label = labels[idx]
+        else:
+            dists = np.array([np.linalg.norm(p - w) for p in p_means])
+            a_label = np.argmin(dists)
+        util = np.dot(p_means[a_label], w)
+        if util < min_accept_utils[a_label]:
+            min_accept_utils[a_label] = util
+            
+    for log in rejected_logs:
+        w = np.array(log['Contract'])
+        for a_idx in range(n_actions):
+            util = np.dot(p_means[a_idx], w)
+            if util > max_reject_utils[a_idx]:
+                max_reject_utils[a_idx] = util
+    
+    initial_costs = np.maximum(min_accept_utils, max_reject_utils)
+    initial_costs = np.where(np.isfinite(initial_costs), initial_costs, 0.0)
+    
+    def constraint_function(params):
+        p_flat = params[:n_actions * m_outcomes].reshape(n_actions, m_outcomes)
+        costs = params[n_actions * m_outcomes: n_actions * m_outcomes + n_actions]
+        constraints = []
+        
+        for a in range(n_actions):
+            constraints.append(np.sum(p_flat[a]) - 1)
+        
+        for log in content:
+            w = np.array(log['Contract'])
+            agent_utils = np.array([np.dot(p, w) - c for p, c in zip(p_flat, costs)])
+            max_util = np.max(agent_utils)
+            
+            if log['Agent Action'] == 1:
+                constraints.append(max_util)
+            else:
+                constraints.append(-max_util)
+                
+        return np.array(constraints)
+    
+    def objective_function(params):
+        p_flat = params[:n_actions * m_outcomes].reshape(n_actions, m_outcomes)
+        costs = params[n_actions * m_outcomes: n_actions * m_outcomes + n_actions]
+        penalty = 0.0
+        
+        for log in content:
+            w = np.array(log['Contract'])
+            agent_utils = np.array([np.dot(p, w) - c for p, c in zip(p_flat, costs)])
+            max_util = np.max(agent_utils)
+            best_action = np.argmax(agent_utils)
+            
+            if log['Agent Action'] == 1:
+                penalty += max(0, -max_util) ** 2
+                principal_util = np.dot(p_flat[best_action], v - w)
+                penalty += (principal_util - log['Principal Utility']) ** 2
+            else:
+                penalty += max(0, max_util) ** 2
+                
+        return penalty
+    
+    bounds = [(0, 1)] * (n_actions * m_outcomes) + [(0, None)] * n_actions
+    initial_params = np.concatenate([p_means.flatten(), initial_costs])
+    
+    cons = [{'type': 'eq', 'fun': lambda x: constraint_function(x)[:n_actions]}]
+    for i in range(len(content)):
+        cons.append({'type': 'ineq', 'fun': lambda x, idx=i: constraint_function(x)[n_actions + idx]})
+    
+    res = minimize(objective_function, initial_params, method='SLSQP', bounds=bounds, constraints=cons, tol=1e-8, options={'maxiter': 2000})
+    
+    if res.success:
+        optimized_params = res.x
+        p_opt = optimized_params[:n_actions * m_outcomes].reshape(n_actions, m_outcomes)
+        c_opt = optimized_params[n_actions * m_outcomes: n_actions * m_outcomes + n_actions]
+    else:
+        p_opt, c_opt = p_means, initial_costs
+    
+    return np.hstack([p_opt, c_opt.reshape(-1, 1)])
+```

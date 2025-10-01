@@ -1,0 +1,10 @@
+Optimize n_components selection.
+Optimize GaussianMixture components.
+Optimize GaussianMixture components.
+Balance model complexity via BIC.
+Use AIC instead of BIC for model selection.
+Use GaussianMixture with optimal n_components.
+Regularization and balanced modeling.
+Optimize n_candidates to avoid overfitting.
+Regularization and adaptive component selection improve agent setting inference.
+Regularization ensures non-negativity.

@@ -1,0 +1,13 @@
+1. Use GMM to refine action clusters.
+2. Incorporate rejected logs for cost calibration.
+3. Merge and deduplicate similar clusters.
+4. Continuously validate IR and IC constraints.
+Use fewer clusters, simplify cost calculation, and avoid redundant clustering steps for efficiency and accuracy.
+Refine clustering, adjust tolerance, normalize centers, simplify cost computation.
+Refine clusters carefully; enforce constraints strictly; simplify merging steps.
+Refine clustering adaptively; enforce stricter feasibility in LP; adjust cost bounds precisely.
+Sharpen LP precision, expand clustering range, tighten cost bounds.
+Use multiple clustering methods, merge results, and enforce IC/IR constraints more tightly.
+Use fewer clusters, ensure probabilities are normalized, and simplify cost estimation.
+Use tighter tolerances and post-process clusters to ensure non-negative probabilities and normalized distributions.
+Use tighter tolerances, validate constraints, adaptive clustering, and precise cost adjustments.

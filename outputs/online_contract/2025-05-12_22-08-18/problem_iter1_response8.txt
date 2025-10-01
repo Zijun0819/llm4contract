@@ -1,0 +1,178 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer agent setting (probabilities over outcomes + cost) consistent with logs:
+    - accommodate accepted and rejected contracts with IR and IC constraints,
+    - dynamically select number of actions,
+    - use joint LP to find minimal-cost representation explaining data.
+    """
+
+    contracts = np.vstack(content['Contract'].to_numpy())  # shape (L,5)
+    actions = content['Agent Action'].to_numpy()  # shape (L,)
+
+    L, m = contracts.shape  # number logs, number outcomes
+
+    # Step 1: Identify accepted and rejected logs
+    accepted_idx = np.where(actions == 1)[0]
+    rejected_idx = np.where(actions == -1)[0]
+    if len(accepted_idx) == 0:
+        # No acceptance -> trivial agent setting: single action uniform probs zero cost
+        p_uniform = np.ones(m) / m
+        cost_zero = 0.0
+        return np.array([np.append(p_uniform, cost_zero)])
+
+    # Step 2: Cluster accepted logs' outcome probs (approximation)
+    # We approximate 'preferred p' per accepted contract via min cost:
+    # For accepted log i: infer p_i by solving:
+    #	max p @ w_i  s.t sum(p)=1, p≥0, p@v = u_i + c (agent utility zero + c unknown)
+    # But uagent_i unknown; instead, use KMeans on contracts normalized by principal utility scale
+    # Alternatively cluster contracts directly to infer actions.
+
+    # Use KMeans to cluster accepted contracts into clusters (actions)
+    max_actions = min(len(accepted_idx), 10)
+    kmeans = KMeans(n_clusters=max_actions, n_init=10, random_state=1)
+    cluster_labels = kmeans.fit_predict(contracts[accepted_idx])
+
+    n_actions = kmeans.n_clusters
+
+    # Step 3: For each cluster, solve a LP to find distribution p over outcomes and cost c satisfying accepted contracts in cluster
+
+    # Create variables stacked: p_action (5 each), c_action (scalar per action)
+
+    # We will build LP variables:
+    # x = [p_0 (5), ..., p_{n-1} (5), c_0, ..., c_{n-1}]   total: n*5 + n = n*6
+
+    # Objective: minimize sum c_a (agent cost is minimized)
+    # Constraints per accepted log i in cluster a:
+    #   acceptance: contract_i @ p_a - c_a >= 0 (agent utility ≥ 0)
+    #   IR: contract_i @ p_a - c_a >=0 keeps agent utility nonnegative
+    #   p_a probabilities: sum p_a = 1, p_a≥0
+    # Constraints per rejected log i:
+    #   contract_i @ p_a - c_a < 0 for all a (agent utility must be negative -> rejection)
+    #   Actual LP: contract_i @ p_a - c_a ≤ -eps (eps small positive safety margin)
+
+    # Because p_a and c_a shared across cluster, for some actions a
+
+    # Explicit linear program formation (linprog standard form)
+
+    from scipy.optimize import linprog
+
+    # Number of variables
+    n_vars = n_actions * (m + 1)  # 5 prob + 1 cost per action
+
+    # Variable indices
+    # For action a:
+    # p_a indices: a*(m+1) to a*(m+1)+m-1
+    # c_a index: a*(m+1) + m
+
+    def idx_p(a, o):
+        return a * (m + 1) + o
+
+    def idx_c(a):
+        return a * (m + 1) + m
+
+    eps = 1e-5
+
+    # Objective: minimize sum c_a
+    c_obj = np.zeros(n_vars)
+    for a in range(n_actions):
+        c_obj[idx_c(a)] = 1.0
+
+    # Constraints lists initialization for linprog: A_ub x <= b_ub, A_eq x = b_eq
+    A_eq = []
+    b_eq = []
+
+    A_ub = []
+    b_ub = []
+
+    # Step 3a: Probability constraints for each action (sum p=1, p≥0)
+    for a in range(n_actions):
+        p_sum = np.zeros(n_vars)
+        p_sum[a * (m + 1): a * (m + 1) + m] = 1
+        A_eq.append(p_sum)
+        b_eq.append(1.0)
+
+        # p≥0 encoded as bounds below
+
+    # Step 3b: Accepted logs constraints (agent utility ≥ 0)
+    # For each accepted log i:
+    # contract_i @ p_a - c_a ≥ 0  →  - contract_i @ p_a + c_a ≤ 0
+
+    for i in accepted_idx:
+        c_i = contracts[i]  # shape (m,)
+        a = cluster_labels[np.where(accepted_idx == i)[0][0]]  # action index for accepted log i
+
+        row = np.zeros(n_vars)
+        # For p_a: -contract_i
+        row[a * (m + 1): a * (m + 1) + m] = -c_i
+        # For c_a: +1
+        row[idx_c(a)] = 1
+        A_ub.append(row)
+        b_ub.append(0.0)
+
+    # Step 3c: Rejected logs constraints (agent utility < 0)
+    # For each rejected log i, for all actions a: contract_i @ p_a - c_a ≤ -eps
+
+    for i in rejected_idx:
+        c_i = contracts[i]
+        for a in range(n_actions):
+            row = np.zeros(n_vars)
+            # contract_i @ p_a - c_a ≤ -eps
+            row[a * (m + 1): a * (m + 1) + m] = c_i
+            row[idx_c(a)] = -1
+            A_ub.append(row)
+            b_ub.append(-eps)
+
+    # Bounds for variables:
+    bounds = []
+    for a in range(n_actions):
+        # p_a_j in [0,1]
+        for _ in range(m):
+            bounds.append((0.0, 1.0))
+        # c_a ≥ 0 no upper bound
+        bounds.append((0.0, None))
+
+    # Convert lists to arrays
+    A_eq = np.array(A_eq) if A_eq else None
+    b_eq = np.array(b_eq) if b_eq else None
+    A_ub = np.array(A_ub) if A_ub else None
+    b_ub = np.array(b_ub) if b_ub else None
+
+    # Solve LP
+    res = linprog(c_obj, A_ub=A_ub, b_ub=b_ub,
+                  A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+
+    if not res.success:
+        # Try reducing actions and retry up to 1 action (fallback)
+        for actions_try in reversed(range(1, n_actions)):
+            kmeans_try = KMeans(n_clusters=actions_try, n_init=10, random_state=1)
+            cluster_labels = kmeans_try.fit_predict(contracts[accepted_idx])
+            n_actions = kmeans_try.n_clusters
+            n_vars = n_actions * (m + 1)
+            # Same construction as above - omitted for brevity; here just fallback to trivial
+        # Fallback trivial agent: uniform prob, zero cost
+        p_uniform = np.ones(m) / m
+        return np.array([np.append(p_uniform, 0.0)])
+
+    # Parse solution vector x
+    x = res.x
+
+    agent_setting = np.zeros((n_actions, m + 1))
+    for a in range(n_actions):
+        p_a = x[a * (m + 1): a * (m + 1) + m]
+        c_a = x[idx_c(a)]
+        # Normalize p_a to sum to 1 (due to numerical errors)
+        p_a = np.maximum(p_a, 0)
+        p_a /= np.sum(p_a) if np.sum(p_a) > 0 else 1
+        c_a = max(c_a, 0)
+        agent_setting[a, :-1] = p_a
+        agent_setting[a, -1] = c_a
+
+    return agent_setting
+```

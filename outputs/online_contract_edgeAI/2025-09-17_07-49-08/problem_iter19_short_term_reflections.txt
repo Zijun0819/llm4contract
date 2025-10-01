@@ -1,0 +1,23 @@
+1. Increase `n_candidates`.
+2. Correct the inequality sign in `mini_lp_p`.
+3. Use `np.mean` instead of `min` to calculate `c_init`.
+4. Ensure `c_init` is non-negative.
+
+Consider principal's reward in `mini_lp_p`, minimize agent's utility for rejected contracts, and simplify cost initialization.
+
+Use principal utility in `mini_lp_p`, minimize costs for accepted contracts, and adjust `n_candidates`.
+
+Consider principal utility in `mini_lp_p`, maximize utility for rejected contracts, and refine cost initialization.
+
+Leverage principal utility in `mini_lp_p`, minimize costs instead of averaging, and adjust `n_candidates` adaptively.
+
+Use `k-means++` init, larger `n_candidates`. For accepted contracts, constrain principal utility in `mini_lp_p`. Optimize expected utility for rejections.
+
+Refine `mini_lp_p` with principal's reward. Reduce `n_candidates`. Simplify cost initialization using only accepted contracts.
+
+Increase `n_candidates`, refine cost initialization using both accepted/rejected contracts, and ensure non-negative costs.
+
+Hint: Tighter constraints in `mini_lp_p` and minimizing agent utility in rejection improve agent setting inference.
+
+Refine `mini_lp_p` with utility constraints. Maximize EU for rejected contracts. Set costs to ensure IR.
+

@@ -1,0 +1,60 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+The running time is：0.7811 seconds
+The inferred contract is [[8.91521143e-01 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 1.08478857e-01 0.00000000e+00
+  1.26062813e-04]
+ [0.00000000e+00 9.97164711e-01 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 2.83528874e-03
+  1.28598758e-04]]
+→ Best principal utility: 0.00022323025169489847
+→ Inferred agent&principal utility:    0.0001220449061829185 0.000497344258738564
+→ Agent and principal score:    0 0.00012204490618281853
+[*] Instance 0: 0.00012204490618281853
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+The running time is：0.1827 seconds
+The inferred contract is [[9.29769222e-01 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  7.02307780e-02 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  2.46628311e-05]
+ [8.88206666e-01 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 1.11793334e-01 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  2.49458086e-05]]
+→ Best principal utility: 0.0003088332508108482
+→ Inferred agent&principal utility:    1.7841470985449742e-06 0.000548961113156913
+→ Agent and principal score:    0 7.042805176446954e-05
+[*] Instance 1: 7.042805176446954e-05
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+The running time is：0.2348 seconds
+The inferred contract is [[9.23283204e-01 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 7.67167956e-02
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  3.90812256e-05]
+ [9.75462974e-01 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 2.45370255e-02
+  3.99185112e-05]]
+→ Best principal utility: 0.00028968502870397705
+→ Inferred agent&principal utility:    3.1529989993465877e-06 0.0005475922612561115
+→ Agent and principal score:    0 7.179690366527103e-05
+[*] Instance 2: 7.179690366527103e-05
+[*] Average:
+8.808995387085304e-05

@@ -1,0 +1,122 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.mixture import GaussianMixture
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    content_df = pd.DataFrame(content)
+    accepted = content_df[content_df['Agent Action'] == 1]
+    rejected = content_df[content_df['Agent Action'] == -1]
+    n_outcomes = len(v)
+    
+    def solve_min_lp(w, u_threshold):
+        c = -w
+        A_eq = np.vstack([np.ones(n_outcomes), v - w])
+        b_eq = np.array([1.0, u_threshold])
+        bounds = [(0, 1) for _ in range(n_outcomes)]
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            return res.x
+        return None
+    
+    candidate_p = []
+    for _, row in accepted.iterrows():
+        p_sol = solve_min_lp(np.array(row['Contract']), row['Principal Utility'])
+        if p_sol is not None:
+            candidate_p.append(p_sol)
+    
+    if not candidate_p:
+        candidate_p = [np.ones(n_outcomes) / n_outcomes]
+    
+    X = np.array(candidate_p)
+    max_components = min(10, max(1, len(X) // 5))
+    best_bic = np.inf
+    best_gmm = None
+    
+    for n_components in range(1, max_components + 1):
+        try:
+            gmm = GaussianMixture(n_components=n_components, random_state=0, n_init=5, max_iter=200)
+            gmm.fit(X)
+            bic = gmm.bic(X)
+            if bic < best_bic:
+                best_bic = bic
+                best_gmm = gmm
+        except:
+            continue
+    
+    if best_gmm is None:
+        best_gmm = GaussianMixture(n_components=1, random_state=0)
+        best_gmm.fit(X)
+    
+    action_centers = best_gmm.means_
+    n_actions = action_centers.shape[0]
+    
+    lower_bounds = np.zeros(n_actions)
+    upper_bounds = np.full(n_actions, np.inf)
+    
+    for _, row in accepted.iterrows():
+        w = np.array(row['Contract'])
+        utilities = action_centers @ w
+        best_action = np.argmax(utilities)
+        lower_bounds[best_action] = max(lower_bounds[best_action], utilities[best_action])
+    
+    for _, row in rejected.iterrows():
+        w = np.array(row['Contract'])
+        utilities = action_centers @ w
+        for a in range(n_actions):
+            if utilities[a] > 0:
+                upper_bounds[a] = min(upper_bounds[a], utilities[a])
+    
+    costs = np.zeros(n_actions)
+    for a in range(n_actions):
+        if np.isfinite(upper_bounds[a]):
+            costs[a] = (lower_bounds[a] + upper_bounds[a]) / 2
+        else:
+            costs[a] = lower_bounds[a]
+    
+    def objective(params):
+        p_flat = params[:n_actions * n_outcomes].reshape(n_actions, n_outcomes)
+        c_vals = params[n_actions * n_outcomes:]
+        penalty = 0.0
+        
+        for _, row in content_df.iterrows():
+            w = np.array(row['Contract'])
+            u_vals = np.array([p @ w - cost for p, cost in zip(p_flat, c_vals)])
+            max_u = np.max(u_vals)
+            
+            if row['Agent Action'] == 1:
+                if max_u < 0:
+                    penalty += max_u**2
+                else:
+                    best_a = np.argmax(u_vals)
+                    principal_util = np.dot(p_flat[best_a], v - w)
+                    penalty += (principal_util - row['Principal Utility'])**2
+            else:
+                if max_u >= 0:
+                    penalty += max_u**2
+        
+        for i in range(n_actions):
+            penalty += 0.01 * (np.sum(p_flat[i]) - 1)**2
+        
+        return penalty
+    
+    constraints = []
+    bounds = [(0, 1)] * (n_actions * n_outcomes) + [(0, None)] * n_actions
+    initial_params = np.concatenate([action_centers.flatten(), costs])
+    
+    res = minimize(objective, initial_params, method='SLSQP', bounds=bounds, constraints=constraints, tol=1e-6, options={'maxiter': 1000})
+    
+    if res.success:
+        params_opt = res.x
+        p_opt = params_opt[:n_actions * n_outcomes].reshape(n_actions, n_outcomes)
+        c_opt = params_opt[n_actions * n_outcomes:]
+    else:
+        p_opt, c_opt = action_centers, costs
+    
+    for i in range(n_actions):
+        p_opt[i] = np.maximum(p_opt[i], 0)
+        p_opt[i] /= np.sum(p_opt[i])
+    
+    return np.hstack([p_opt, c_opt.reshape(-1, 1)])
+```

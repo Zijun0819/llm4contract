@@ -1,0 +1,153 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting (probabilities over outcomes + costs)
+    consistent with historical logs of contracts, principal utilities,
+    and agent accept/reject actions.
+
+    Args:
+        v (np.ndarray): Principal's reward vector for 5 outcomes, shape (5,)
+        content (list[dict]): Each dict with keys:
+            - 'Contract': 5-dim payment vector,
+            - 'Principal Utility': float,
+            - 'Agent Action': int (1 accept, -1 reject)
+
+    Returns:
+        np.ndarray: n_actions x 6 matrix, each row:
+            first 5 columns = outcome probabilities (sum=1),
+            last column = agent cost (≥0).
+    """
+    m = v.shape[0]
+    logs_df = pd.DataFrame(content)
+    accepted = logs_df[logs_df['Agent Action'] == 1].reset_index(drop=True)
+    rejected = logs_df[logs_df['Agent Action'] == -1].reset_index(drop=True)
+
+    # If no accepted contracts, return trivial uniform action with zero cost
+    if accepted.empty:
+        uniform_p = np.ones(m) / m
+        return np.hstack([uniform_p.reshape(1, -1), np.zeros((1, 1))])
+
+    # LP to infer agent outcome distribution p for each accepted contract
+    def infer_p_for_accepted_log(w, u_p):
+        # maximize p @ w <=> minimize -p @ w
+        c = -np.array(w, dtype=np.float64)
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, u_p], dtype=np.float64)
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c=c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p = res.x
+            p = np.clip(p, 0, None)
+            s = p.sum()
+            if s > 0:
+                p /= s
+            else:
+                p = np.ones(m) / m
+            return p
+        else:
+            return np.ones(m) / m
+
+    p_accept_list = [infer_p_for_accepted_log(row['Contract'], row['Principal Utility']) for _, row in accepted.iterrows()]
+    p_accept = np.vstack(p_accept_list)  # shape (n_accept, m)
+
+    # Use hierarchical clustering with distance threshold to find stable clusters adaptively
+    clustering = AgglomerativeClustering(distance_threshold=0.15, n_clusters=None, linkage='average')
+    labels = clustering.fit_predict(p_accept)
+    n_actions = labels.max() + 1
+
+    # Compute cluster centers (mean p per cluster), normalize strictly
+    centers = np.zeros((n_actions, m), dtype=np.float64)
+    for a in range(n_actions):
+        cluster_ps = p_accept[labels == a]
+        c = cluster_ps.mean(axis=0)
+        c = np.clip(c, 0, None)
+        s = c.sum()
+        if s > 0:
+            c /= s
+        else:
+            c = np.ones(m) / m
+        centers[a] = c
+
+    accepted_contracts = np.array(accepted['Contract'].tolist(), dtype=np.float64)
+    rejected_contracts = (np.array(rejected['Contract'].tolist(), dtype=np.float64)
+                         if not rejected.empty else np.empty((0, m), dtype=np.float64))
+
+    eps = 1e-9
+    costs = np.zeros(n_actions, dtype=np.float64)
+
+    # Initialize costs conservatively:
+    # cost_a >= max accepted payoff for cluster a (IR)
+    # cost_a > max rejected payoff for cluster a (IC)
+    for a in range(n_actions):
+        p_a = centers[a]
+
+        accepted_idx = np.where(labels == a)[0]
+        max_acc_payoff = 0.0
+        if accepted_idx.size > 0:
+            w_acc = accepted_contracts[accepted_idx]
+            max_acc_payoff = np.max(w_acc @ p_a)
+
+        max_rej_payoff = -np.inf
+        if rejected_contracts.shape[0] > 0:
+            rej_vals = rejected_contracts @ p_a
+            max_rej_payoff = rej_vals.max()
+
+        cost_a = max(max_acc_payoff, max_rej_payoff + eps, 0.0)
+        costs[a] = cost_a
+
+    # Iteratively refine costs to satisfy IR and IC tightly without over-penalizing
+    max_iters = 30
+    for _ in range(max_iters):
+        prev_costs = costs.copy()
+
+        # Agent utilities for accepted contracts (n_accept x n_actions)
+        accept_utils = accepted_contracts @ centers.T - costs  # shape (n_accept, n_actions)
+        accept_best_util = accept_utils.max(axis=1)
+        accept_best_action = accept_utils.argmax(axis=1)
+
+        # If any accepted contract has negative max utility (violates IR), fix by lowering costs
+        ir_violations = np.where(accept_best_util < -eps)[0]
+        if ir_violations.size > 0:
+            # For each violating accepted contract, reduce cost of best action to fix IR
+            for i in ir_violations:
+                a = accept_best_action[i]
+                needed_cost = accepted_contracts[i] @ centers[a]
+                # cost[a] <= needed_cost to have utility >=0
+                # So reduce cost[a] if current cost[a] > needed_cost
+                if costs[a] > needed_cost:
+                    costs[a] = max(needed_cost, 0.0)
+            continue  # re-check after cost update
+
+        # Agent utilities for rejected contracts (n_reject x n_actions)
+        if rejected_contracts.shape[0] > 0:
+            reject_utils = rejected_contracts @ centers.T - costs  # shape (n_reject, n_actions)
+            # For IC, all utilities must be < 0
+            ic_violations = np.argwhere(reject_utils >= -eps)
+            if ic_violations.size > 0:
+                # For each violation, increase cost[a] to reduce utility below zero
+                for idx in ic_violations:
+                    i_rej, a = idx
+                    needed_cost = rejected_contracts[i_rej] @ centers[a] + eps
+                    if costs[a] < needed_cost:
+                        costs[a] = needed_cost
+                continue  # re-check after cost update
+
+        # If costs stabilized, break early
+        if np.allclose(costs, prev_costs, atol=eps):
+            break
+
+    # Final normalization and clipping to ensure valid probabilities and costs
+    centers = np.clip(centers, 0, None)
+    centers_sum = centers.sum(axis=1, keepdims=True)
+    centers_sum[centers_sum == 0] = 1.0
+    centers /= centers_sum
+    costs = np.maximum(costs, 0.0)
+
+    agent_setting = np.hstack([centers, costs[:, None]])
+    return agent_setting
+```

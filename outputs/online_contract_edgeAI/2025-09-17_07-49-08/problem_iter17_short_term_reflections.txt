@@ -1,0 +1,30 @@
+Refine `mini_lp_p` constraints, optimize rejection sampling, reduce `n_candidates`, and improve cost initialization.
+
+Consider principal utility in `mini_lp_p`. Increase `n_candidates`, `n_init` in KMeans, and refine cost estimation using accepted/rejected contracts.
+
+Focus on:
+1. `mini_lp_p`: Correct utility difference calculation.
+2. Rejected contract objective: Maximize, not minimize, expected utility.
+3. Cost initialization: Consider both accepted and rejected contracts.
+
+Refine `mini_lp_p` with `v-w` constraint. For rejections, maximize utility. Simplify cost estimation using only accepted contracts.
+
+Fewer candidates, tighter LP bounds, direct cost estimation, and `elkan` K-means improve agent setting inference.
+
+Consider agent's outside option and how it relates to accepted contracts' utilities when setting the cost `c_init`.
+
+1. Increase `n_candidates`.
+2. Use `v - w` in `mini_lp_p`.
+3. Refine cost initialization with `min` and `max` expected utilities.
+
+1. Correct the sign in `mini_lp_p`.
+2. Maximize utility for rejected contracts.
+3. Refine cost estimation using both accepted and rejected contracts.
+
+The better code uses principal's reward 'v' in `mini_lp_p` and minimizes agent's expected utility for rejected contracts.
+
+1. Increase `n_candidates`.
+2. Correct `A_ub` in `mini_lp_p`.
+3. Maximize utility for rejected contracts.
+4. Use `np.mean` for cost initialization.
+

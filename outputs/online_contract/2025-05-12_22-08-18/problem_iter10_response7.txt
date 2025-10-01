@@ -1,0 +1,151 @@
+```python
+import numpy as np
+from sklearn.cluster import AgglomerativeClustering
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions = outcome distributions + costs)
+    that rationalizes all historical contract-agent interaction logs under IC and IR,
+    by emphasizing weighted clustering on high-utility accepted contracts,
+    strictly enforcing rejection margins, adaptively adding actions to explain
+    all accepted contracts, and carefully normalizing probabilities.
+
+    Parameters:
+    - v (np.ndarray): Principal's value vector of length 5
+    - content (list[dict]): each dict has keys:
+        'Contract' (list of 5 floats),
+        'Principal Utility' (float),
+        'Agent Action' (1 or -1)
+
+    Returns:
+    - agent_setting (np.ndarray): n_actions x 6 matrix; each row:
+        first 5 elements: outcome probabilities summing to 1,
+        last element: nonnegative agent cost
+    """
+    m_outcomes = v.size
+    L = len(content)
+
+    # Extract arrays from logs
+    contracts = np.array([log['Contract'] for log in content], dtype=np.float64)  # (L,5)
+    agent_actions = np.array([log['Agent Action'] for log in content], dtype=int)  # (L,)
+    p_util = np.array([log['Principal Utility'] for log in content], dtype=np.float64)  # (L,)
+
+    accepted_ix = np.where(agent_actions == 1)[0]
+    rejected_ix = np.where(agent_actions == -1)[0]
+
+    # If no accepted contracts, return trivial uniform distribution with zero cost
+    if accepted_ix.size == 0:
+        p_uniform = np.ones(m_outcomes) / m_outcomes
+        return np.hstack([p_uniform.reshape(1, -1), np.array([[0.0]])])
+
+    accepted_contracts = contracts[accepted_ix]
+    accepted_utilities = p_util[accepted_ix]
+
+    # Normalize accepted contracts for clustering (avoid zero sums)
+    norm_accepted = accepted_contracts / (accepted_contracts.sum(axis=1, keepdims=True) + 1e-12)
+
+    # Adaptive cluster count: min(10, accepted_ix.size, floor(sqrt(accepted_ix.size))), at least 1
+    n_clusters = max(1, min(10, accepted_ix.size, int(np.sqrt(accepted_ix.size))))
+    
+    if n_clusters > 1:
+        clustering = AgglomerativeClustering(n_clusters=n_clusters, linkage='average')
+        cluster_labels = clustering.fit_predict(norm_accepted)
+    else:
+        cluster_labels = np.zeros(accepted_ix.size, dtype=int)
+
+    p_candidates = []
+    cost_lower_bounds = []
+
+    # Construct candidate actions by weighted averaging within clusters
+    for c_id in range(n_clusters):
+        cluster_mask = (cluster_labels == c_id)
+        cluster_indices = accepted_ix[cluster_mask]
+        if cluster_indices.size == 0:
+            continue
+
+        cluster_w = contracts[cluster_indices]
+        cluster_u = accepted_utilities[cluster_mask]
+
+        # Weights emphasizing higher-utility contracts: (u - min + 1)
+        min_u = cluster_u.min()
+        weights = cluster_u - min_u + 1.0
+        weights_sum = weights.sum()
+        if weights_sum < 1e-12:
+            weights = np.ones_like(weights)
+            weights_sum = weights.sum()
+        weights /= weights_sum
+
+        # Weighted average contract vector (may have negatives clipped later)
+        avg_w = np.average(cluster_w, axis=0, weights=weights)
+
+        # Project onto simplex: clip negatives then normalize
+        p = np.clip(avg_w, 0.0, None)
+        s = p.sum()
+        if s < 1e-12:
+            p = np.ones(m_outcomes) / m_outcomes
+        else:
+            p = p / s
+
+        # Cost lower bound from IR constraints: min over cluster of p @ contract_i
+        vals = np.array([p @ contracts[i] for i in cluster_indices])
+        cost_lb = vals.min()
+
+        p_candidates.append(p)
+        cost_lower_bounds.append(cost_lb)
+
+    p_candidates = np.array(p_candidates)  # (n_clusters, 5)
+    cost_lower_bounds = np.array(cost_lower_bounds)  # (n_clusters,)
+
+    # For rejection constraints: cost > max p @ rejected contracts to enforce rejections strictly
+    if rejected_ix.size > 0:
+        rejected_w = contracts[rejected_ix]  # (#rej,5)
+        p_w_rej = p_candidates @ rejected_w.T  # (n_clusters, #rej)
+        cost_rej_min = p_w_rej.max(axis=1) + 1e-8
+    else:
+        cost_rej_min = np.zeros_like(cost_lower_bounds)
+
+    # Set costs satisfying both IR and rejection constraints
+    costs = np.maximum(cost_lower_bounds, cost_rej_min)
+    costs = np.maximum(costs, 0.0)
+
+    def explains_contract(w_i: np.ndarray) -> bool:
+        # Check if any candidate action rationalizes contract w_i under IC & IR
+        utilities = p_candidates @ w_i - costs
+        return np.any(utilities >= -1e-10)
+
+    # Add new actions for accepted contracts not explained by existing candidates
+    for idx in accepted_ix:
+        w_i = contracts[idx]
+        if not explains_contract(w_i):
+            # New action probabilities: normalized clipped w_i
+            p_new = np.clip(w_i, 0.0, None)
+            s = p_new.sum()
+            if s < 1e-12:
+                p_new = np.ones(m_outcomes) / m_outcomes
+            else:
+                p_new = p_new / s
+            c_new = p_new @ w_i  # cost consistent with IR for this contract
+            p_candidates = np.vstack([p_candidates, p_new])
+            costs = np.append(costs, c_new)
+
+    # Re-check rejection constraints strictly for all actions including new ones
+    if rejected_ix.size > 0:
+        rejected_w = contracts[rejected_ix]
+        p_w_rej = p_candidates @ rejected_w.T  # (n_actions, #rej)
+        for a_idx in range(len(costs)):
+            max_rej_util = p_w_rej[a_idx].max()
+            if costs[a_idx] <= max_rej_util + 1e-12:
+                costs[a_idx] = max_rej_util + 1e-4  # safety margin for strict inequality
+
+    # Final normalization of probabilities (precise simplex projection)
+    p_candidates = np.clip(p_candidates, 0.0, None)
+    row_sums = p_candidates.sum(axis=1, keepdims=True)
+    zero_sum_mask = (row_sums < 1e-12).flatten()
+    row_sums[zero_sum_mask] = 1.0
+    p_candidates /= row_sums
+
+    costs = np.maximum(costs, 0.0)
+
+    agent_setting = np.hstack([p_candidates, costs[:, None]])
+    return agent_setting
+```

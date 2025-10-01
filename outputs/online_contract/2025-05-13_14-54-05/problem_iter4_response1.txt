@@ -1,0 +1,123 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting (actions with outcome distributions and costs)
+    consistent with historical interaction logs under IR and IC constraints.
+
+    Parameters:
+    - v: np.ndarray, principal's reward vector for 5 outcomes (length 5).
+    - content: list of dicts, each with keys:
+        'Contract': list of 5 payments,
+        'Principal Utility': float,
+        'Agent Action': 1 (accept) or -1 (reject).
+
+    Returns:
+    - agent_setting: np.ndarray, n_actions x 6 matrix,
+      first 5 columns probability distributions over outcomes,
+      last column agent cost for that action (>=0).
+    """
+
+    m = len(v)
+    logs_df = pd.DataFrame(content)
+
+    accept_df = logs_df[logs_df['Agent Action'] == 1]
+    reject_df = logs_df[logs_df['Agent Action'] == -1]
+
+    # If no accepted contracts, return trivial uniform distribution with zero cost
+    if len(accept_df) == 0:
+        uniform_p = np.ones(m) / m
+        return np.array([np.append(uniform_p, 0.0)])
+
+    accept_contracts = np.vstack(accept_df['Contract'].to_numpy())
+    accept_putils = accept_df['Principal Utility'].to_numpy()
+
+    # Step 1: For each accepted contract, solve feasibility LP for outcome distribution p:
+    # Constraints:
+    #   sum p = 1
+    #   p @ v = principal utility (accept_putils[i])
+    #   0 <= p <= 1
+    # Objective: zero (feasibility)
+    def solve_p_for_accept(payout: np.ndarray, pu: float) -> np.ndarray:
+        A_eq = np.vstack([np.ones(m), v])
+        b_eq = np.array([1.0, pu])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c=np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            # Numerical cleanup: clip small negatives to zero
+            p = np.clip(res.x, 0, 1)
+            s = p.sum()
+            if s > 0:
+                p /= s
+            else:
+                p = np.ones(m) / m
+            return p
+        else:
+            # fallback uniform distribution
+            return np.ones(m) / m
+
+    candidate_ps = np.array([solve_p_for_accept(w, pu) for w, pu in zip(accept_contracts, accept_putils)])
+
+    # Step 2: Cluster candidate_ps to find representative actions
+    max_clusters = min(10, len(candidate_ps))
+    if max_clusters == 1:
+        n_actions = 1
+        p_centers = candidate_ps.mean(axis=0, keepdims=True)
+        accept_assign = np.zeros(len(candidate_ps), dtype=int)
+    else:
+        inertias = []
+        for k in range(1, max_clusters + 1):
+            kmeans = KMeans(n_clusters=k, random_state=0, n_init=10).fit(candidate_ps)
+            inertias.append(kmeans.inertia_)
+        deltas = np.diff(inertias)
+        if len(deltas) == 0:
+            n_actions = 1
+        else:
+            max_delta = np.max(deltas)
+            threshold = max_delta * 0.5
+            candidates = np.where(deltas < threshold)[0]
+            n_actions = candidates[0] + 1 if len(candidates) > 0 else max_clusters
+        kmeans = KMeans(n_clusters=n_actions, random_state=0, n_init=20).fit(candidate_ps)
+        p_centers = kmeans.cluster_centers_
+        accept_assign = kmeans.predict(candidate_ps)
+
+    # Step 3: Infer cost per action from accepted logs
+    # For each action a:
+    #   c_a <= min_i p_a @ w_i for accepted logs i assigned to a
+    #   c_a >= 0
+    costs = np.zeros(n_actions)
+    for a in range(n_actions):
+        idxs = np.where(accept_assign == a)[0]
+        if len(idxs) == 0:
+            costs[a] = 0.0
+            continue
+        wages_a = accept_contracts[idxs]  # shape (#assigned, m)
+        p_a = p_centers[a]
+        payoffs = wages_a @ p_a
+        costs[a] = max(0.0, np.min(payoffs))
+
+    # Step 4: Enforce rejection consistency (IR and IC constraints)
+    # For rejected contracts w_r and all actions a:
+    #   p_a @ w_r - c_a < 0
+    # => c_a > max_r p_a @ w_r
+    if len(reject_df) > 0:
+        reject_contracts = np.vstack(reject_df['Contract'].to_numpy())  # shape (#rej, m)
+        rej_utilities = reject_contracts @ p_centers.T  # (#rej, n_actions)
+        rej_max_util = np.max(rej_utilities, axis=0)  # (n_actions,)
+        costs = np.maximum(costs, rej_max_util + 1e-6)
+
+    # Step 5: Normalize p_centers rows to sum to 1 (numerical safety)
+    p_centers = np.clip(p_centers, 0, None)
+    row_sums = p_centers.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    p_centers = p_centers / row_sums
+
+    # Step 6: Assemble agent setting (probabilities + cost)
+    agent_setting = np.hstack([p_centers, costs.reshape(-1, 1)])
+
+    return agent_setting
+```

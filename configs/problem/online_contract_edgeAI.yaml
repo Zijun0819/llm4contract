@@ -1,0 +1,12 @@
+problem_name: online_contract_edgeAI
+obj_type: min
+func_name: agent_solver
+description: Inferring a valid agent setting via "agent_solver" that satisfies all historical interaction logs between the principal and agent regarding an online contract design problem.
+n_actions: 7
+m_outcomes: 12
+n_actions_l: [2, 3, 4, 5, 6, 7]
+m_outcomes_l: [2, 4, 6, 8, 10, 12]
+num_contracts: 100
+reward_subs: 1.6e-4
+alpha_1: 5e-4
+cost_train_ai: 1.2e-4

@@ -1,0 +1,98 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from scipy.optimize import minimize
+
+def agent_solver(v, content):
+    n_candidates = 12
+    m_outcomes = len(v)
+    logs = content if hasattr(content, '__iter__') and hasattr(content[0], 'get') else pd.DataFrame(content).to_dict('records')
+    
+    def recover_p(w, u):
+        m = len(w)
+        A_eq = np.vstack([np.ones(m), v - w]).T
+        b_eq = np.array([1.0, u])
+        res = linprog(w, A_eq=A_eq, b_eq=b_eq, bounds=[(0,1)]*m, method='highs')
+        return res.x if res.success else None
+
+    accepted_ps = []
+    for log in logs:
+        if log['Agent Action'] == 1:
+            p_candidate = recover_p(log['Contract'], log['Principal Utility'])
+            if p_candidate is not None:
+                accepted_ps.append(p_candidate)
+    
+    if not accepted_ps:
+        p_default = np.full(m_outcomes, 1.0/m_outcomes)
+        c_default = 0.0
+        return np.hstack([p_default.reshape(1, -1), np.array([[c_default]])])
+    
+    all_p = np.array(accepted_ps)
+    kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=20).fit(all_p)
+    cluster_centers = kmeans.cluster_centers_
+    
+    assignments = -np.ones(len(logs), dtype=int)
+    for idx, log in enumerate(logs):
+        if log['Agent Action'] == 1:
+            w_vec = log['Contract']
+            utilities = cluster_centers @ w_vec
+            assignments[idx] = np.argmax(utilities)
+    
+    action_observed = [False] * n_candidates
+    for a in range(n_candidates):
+        if np.any(assignments == a):
+            action_observed[a] = True
+    
+    refined_centers = np.zeros((n_candidates, m_outcomes))
+    for a in range(n_candidates):
+        if action_observed[a]:
+            indices = np.where(assignments == a)[0]
+            sample_ps = []
+            for i in indices:
+                w_temp = logs[i]['Contract']
+                u_temp = logs[i]['Principal Utility']
+                p_temp = recover_p(w_temp, u_temp)
+                if p_temp is not None:
+                    sample_ps.append(p_temp)
+            if sample_ps:
+                refined_centers[a] = np.mean(sample_ps, axis=0)
+            else:
+                refined_centers[a] = cluster_centers[a]
+        else:
+            refined_centers[a] = cluster_centers[a]
+    
+    def compute_ir_cost(action_idx):
+        indices = np.where(assignments == action_idx)[0]
+        if indices.size == 0:
+            return 0.0
+        wages = np.array([logs[i]['Contract'] for i in indices])
+        min_wages = np.min(wages, axis=0)
+        return refined_centers[action_idx] @ min_wages
+    
+    ir_costs = np.array([compute_ir_cost(a) for a in range(n_candidates)])
+    
+    rej_indices = [i for i, log in enumerate(logs) if log['Agent Action'] == -1]
+    if rej_indices:
+        rej_wages = np.array([logs[i]['Contract'] for i in rej_indices]).T
+        rej_utilities = refined_centers @ rej_wages
+        rej_max_utils = np.max(rej_utilities, axis=1)
+    else:
+        rej_max_utils = np.zeros(n_candidates)
+    
+    final_costs = np.maximum(ir_costs, rej_max_utils)
+    
+    full_setting = np.hstack([refined_centers, final_costs.reshape(-1, 1)])
+    valid_rows = []
+    for row in full_setting:
+        if np.any(row[:-1] > 1e-10) or row[-1] > 1e-10:
+            valid_rows.append(row)
+    
+    if not valid_rows:
+        p_default = np.full(m_outcomes, 1.0/m_outcomes)
+        c_default = 0.0
+        return np.hstack([p_default.reshape(1, -1), np.array([[c_default]])])
+    
+    return np.array(valid_rows)
+```

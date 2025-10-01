@@ -1,0 +1,12 @@
+The `agent_solver` function takes a principal's reward 'v' and historical interaction logs between the principal and the agent 'content' as inputs. Notably, Each log includes:
+
+- Contract: a {len_w}-dimensional payment vector for {len_w} outcomes,
+- Principal Utility: principal's utility under the contract, which will be zero if the agent rejects the contract,
+- Agent Action: where `1` indicates acceptance (expected utility ≥ 0) and `-1` indicates rejection (expected utility < 0).
+
+The function returns an inferred valid agent setting represented by an n \times ({len_w} + 1) matrix:
+
+- The number of actions n can be adaptively selected to sufficiently explain the data.
+- Each row corresponds to a possible agent action.
+- The first {len_w} columns are probabilities over the {len_w} outcomes (summing to 1).
+- The final column is the agent's cost (non-negative) of performing that action.

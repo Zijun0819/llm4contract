@@ -1,0 +1,167 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    # Parameters
+    m = v.size  # outcomes
+    L = len(content)
+
+    # Parse logs
+    contracts = np.stack(content['Contract'].to_numpy())  # shape (L,m)
+    principal_utils = np.array(content['Principal Utility'])  # shape (L,)
+    actions = np.array(content['Agent Action'])  # 1: accept, -1: reject
+
+    # Step 1: Collect acceptance logs
+    accept_mask = (actions == 1)
+    reject_mask = (actions == -1)
+    contracts_accept = contracts[accept_mask]
+    util_accept = principal_utils[accept_mask]
+
+    if len(contracts_accept) == 0:
+        # No accepted contracts => agent never accepts, minimal setting:
+        p0 = np.eye(m)  # identity, each action a fixed outcome deterministic
+        costs = np.full(m, np.inf)  # infinite cost to force rejecting all
+        return np.hstack([p0, costs[:, None]])
+
+    #######################
+    # Step 2: Infer action outcome distributions p via matrix factorization + convex optimization
+    # Idea: accepted contracts imply agent expected utility >=0,
+    # expected agent utility = p_a @ w - c_a >= 0, where w=contract vector.
+
+    # Different accepted contracts may correspond to different actions taken.
+    # Use clustering to find n actions (num clusters)
+    n_clusters = min(8, len(contracts_accept))
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    clusters = kmeans.fit_predict(contracts_accept)
+    # For each cluster, estimate p_a and c_a
+
+    p_list = []
+    c_list = []
+
+    # Helper to solve LP for p_a given contracts and utilities in cluster
+    def solve_p_and_c(cluster_idx):
+        # Extract cluster contracts and principal utility
+        cluster_w = contracts_accept[clusters == cluster_idx]  # shape (N,m)
+        cluster_U = util_accept[clusters == cluster_idx]  # (N,)
+        N = cluster_w.shape[0]
+
+        # Formulate optimization variables: p_a (length m), c_a (scalar >=0)
+        # Constraints: for each contract w_i and agent utility u_i = p_a @ w_i - c_a >=0
+        # Also p_a probabilities: sum=1, p_a >=0; c_a >=0
+
+        # We'll fix c_a and optimize p_a by LP, then optimize c_a via 1D search
+
+        def p_lp(c):
+            # Given fixed c, solve:
+            # maximize 0 (feasibility problem)
+            # subject to:
+            # sum_j p_j =1
+            # for i in [N]: p @ w_i >= c
+            #              => p @ w_i >= c
+            # but agent utility u_i = p@w_i - c >= 0 -> p@w_i >= c for each considered contract
+            # bounds: 0<=p_j<=1
+
+            A_ub = -cluster_w  # shape N,m, for p@w_i >= c <=> -p@w_i <= -c
+            b_ub = -np.ones(N) * c
+            A_eq = np.ones((1, m))
+            b_eq = np.array([1.])
+
+            bounds = [(0, 1)] * m
+            res = linprog(c=np.zeros(m), A_ub=A_ub, b_ub=b_ub,
+                          A_eq=A_eq, b_eq=b_eq, bounds=bounds, method="highs")
+            if not res.success:
+                return None
+            return res.x
+
+        # Binary search over c in [0, maxc]
+        maxc = 100.0
+        eps = 1e-6
+        l, r = 0.0, maxc
+        p_opt, c_opt = None, 0
+        while r - l > eps:
+            mid = (l + r) / 2
+            p_candidate = p_lp(mid)
+            if p_candidate is not None:
+                l = mid
+                p_opt = p_candidate
+                c_opt = mid
+            else:
+                r = mid
+        # If no feasible p found, fallback to uniform p and c=0
+        if p_opt is None:
+            p_opt = np.ones(m) / m
+            c_opt = 0.0
+
+        return p_opt, c_opt
+
+    for ci in range(n_clusters):
+        p_a, c_a = solve_p_and_c(ci)
+        p_list.append(p_a)
+        c_list.append(c_a)
+
+    p_mat = np.vstack(p_list)  # n_clusters x m
+    c_vec = np.array(c_list)   # n_clusters
+
+    # Step 3: Refine to ensure IR and IC conditions including rejections
+    # Agent accepted log utility must be >=0 for respective a
+    # Rejected contracts agent utility <0 for all a
+
+    # Assign each accepted contract to best-fit action
+    accept_contracts = contracts[accept_mask]
+    accept_actions = np.full(len(accept_contracts), -1, dtype=int)
+
+    for i, w in enumerate(accept_contracts):
+        # Compute utilities agent would get from each action:
+        u_agents = p_mat @ w - c_vec  # shape n_clusters
+        # Agent must accept => utility>=0, pick action with max utility >=0
+        feasible = (u_agents >= -1e-9)
+        if not feasible.any():
+            # No action explains acceptance; assign closest anyway
+            accept_actions[i] = int(np.argmax(u_agents))
+        else:
+            accept_actions[i] = int(np.argmax(u_agents * feasible))
+
+    # Adjust costs to satisfy IR for accepted contracts precisely
+    for a in range(n_clusters):
+        inds = np.where(accept_actions == a)[0]
+        if inds.size == 0:
+            continue
+        ws_a = accept_contracts[inds]  # contracts assigned to action a
+        # Ensure local IR c_a = min_{i} p_a @ w_i
+        # Actually c_a <= min Agent expected utility to keep IR for accepted logs
+        util_min = np.min(p_mat[a] @ ws_a.T)
+        c_vec[a] = min(c_vec[a], util_min)
+
+    # Step 4: Ensure consistent rejection: for each rejected contract, all utilities < 0
+    reject_contracts = contracts[reject_mask]
+    if reject_contracts.shape[0] > 0:
+        w_reject = reject_contracts  # (R, m)
+        # For each action a:
+        # Must have p_a @ w_r - c_a < 0 for every r
+        # If any violation, increase c_a
+
+        for a in range(n_clusters):
+            viol_util = p_mat[a] @ w_reject.T - c_vec[a]
+            max_violation = np.max(viol_util)
+            if max_violation >= 0:
+                # increase cost slightly above max violation to reject these contracts
+                c_vec[a] += max_violation + 1e-5
+
+    # Step 5: Normalize p to probability simplex (safety)
+    p_mat = np.clip(p_mat, 0, None)
+    row_sums = p_mat.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    p_mat /= row_sums
+
+    # Set costs non-negative
+    c_vec = np.clip(c_vec, 0, None)
+
+    # Compose output matrix: each row state = [p(5 outcomes), c]
+    agent_setting = np.hstack([p_mat, c_vec[:, None]])
+
+    return agent_setting
+```

@@ -1,0 +1,5 @@
+_target_: utils.llm_clients.openai.OpenAIClient
+
+model: gpt-4.1-mini-2025-04-14 # LLM model
+temperature: 0.5  # temperature for chat completion
+api_key: ${oc.env:OPENAI_API_KEY,null}

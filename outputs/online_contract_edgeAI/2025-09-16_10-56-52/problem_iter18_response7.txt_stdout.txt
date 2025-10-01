@@ -1,0 +1,48 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+The running time is：18.9866 seconds
+→ Best principal utility: 0.00047566224791582634
+→ The corresponding best action is: 5
+→ The corresponding agent utility is: 9.999054535747565e-17
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0006193674068273736
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 2.1758094108950644e-08
+→ The principal utility gap is: 0.0006193891649213826-0.0006193674068273736=2.175809400901431e-08
+→ Agent and principal score:    0 2.175809400901431e-08
+[*] Instance 0: 2.175809400901431e-08
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+The running time is：9.0642 seconds
+→ Best principal utility: 0.0004731265123573502
+→ The corresponding best action is: 5
+→ The corresponding agent utility is: 9.999054535747565e-17
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0006111885835946843
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 8.200581326798227e-06
+→ The principal utility gap is: 0.0006193891649213826-0.0006111885835946843=8.200581326698242e-06
+→ Agent and principal score:    0 8.200581326698242e-06
+[*] Instance 1: 8.200581326698242e-06
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+The running time is：10.5223 seconds
+→ Best principal utility: 0.0005019565410533831
+→ The corresponding best action is: 4
+→ The corresponding agent utility is: 9.999054535747565e-17
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0006150157206280503
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 4.373444293432311e-06
+→ The principal utility gap is: 0.0006193891649213826-0.0006150157206280503=4.373444293332275e-06
+→ Agent and principal score:    0 4.373444293332275e-06
+[*] Instance 2: 4.373444293332275e-06
+[*] Average:
+4.19859457134651e-06

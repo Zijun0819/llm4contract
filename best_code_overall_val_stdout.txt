@@ -1,0 +1,33 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\eval10_2_01.pkl with 5 instances.
+→ Best principal utility: 4.129209891323631
+The running time is：0.5988 seconds
+→ Best principal utility: 4.1170258017686665
+→ Inferred agent&principal utility:    0.012184099554964689 4.1170258017686665
+→ Agent and principal score:    0 0.01218408955496475
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\eval10_2_02.pkl with 5 instances.
+→ Best principal utility: 2.34491847008967
+The running time is：0.2679 seconds
+→ Best principal utility: 2.15541027555881
+→ Inferred agent&principal utility:    0.16611695682389982 2.1915431772174117
+→ Agent and principal score:    0 0.15337529287225848
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\eval10_2_03.pkl with 5 instances.
+→ Best principal utility: 3.6635974760682117
+The running time is：0.2470 seconds
+→ Best principal utility: 3.610878945714032
+→ Inferred agent&principal utility:    0.028594464458653324 3.6350030216095583
+→ Agent and principal score:    0 0.028594454458653384
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\eval10_2_04.pkl with 5 instances.
+→ Best principal utility: 4.8019143412583905
+The running time is：0.2389 seconds
+→ Best principal utility: 4.722669807536176
+→ Inferred agent&principal utility:    0.07924454372221312 4.722669807536176
+→ Agent and principal score:    0 0.07924453372221407
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\eval10_2_05.pkl with 5 instances.
+→ Best principal utility: 3.8054953494270034
+The running time is：0.2440 seconds
+→ Best principal utility: 3.756609420196109
+→ Inferred agent&principal utility:    0.048885939230895126 3.756609420196109
+→ Agent and principal score:    0 0.0488859292308943
+[*] Average IR violation rate is 0.0000
+[*] Average for the problem setting of 10-2: 0.064456859967797

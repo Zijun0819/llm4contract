@@ -1,0 +1,1 @@
+Refine cost bounds via IC constraints using trust-constr or SLSQP. Enforce explicit IR/IC with penalties, and use GMM for outcome clustering. Prioritize feasibility via tighter constraints and multiple initializations.

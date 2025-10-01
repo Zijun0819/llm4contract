@@ -1,0 +1,20 @@
+LP-based p inference, GMM clustering, and cost refinement with IR/IC constraints improve agent setting inference.
+
+LP-based action inference, adaptive k-means, and cost refinement using rejections improve agent setting inference.
+
+Fewer clusters, simpler cost initialization, and strict consistency checks improve agent setting inference.
+
+Refine `mini_lp_p` objective, K-means initialization, and cost estimation using cluster proximity for better agent settings.
+
+LP-based action inference, cost refinement using rejections, and adaptive k-means clustering improve agent setting inference.
+
+Leverage rejection data to refine cost estimation. Ensure non-negativity of costs and handle empty clusters gracefully.
+
+Use k-means for clustering, solve LP with principal utility, and refine costs based on acceptance.
+
+GMM clustering, utility-based cost refinement, and considering rejections improve agent setting inference.
+
+The better code uses principal utility in LP, focuses on accepted contracts, and estimates agent costs more precisely.
+
+Utilize principal utility to guide agent type discovery. Incorporate linear programming for precise probability estimation.
+

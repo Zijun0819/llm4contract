@@ -1,0 +1,1 @@
+For robust utility, streamline clustering: use GMM directly for nuanced cost refinement, deduplicate actions, enforce strict IR/IC, and normalize probabilities. Prioritize fewer, distinct clusters to enhance efficiency and utility gains.

@@ -1,0 +1,43 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+→ Best action index:    98
+→ Best contract w:       [0.94877393 0.         0.         4.06570984 4.98148626]
+→ Best principal utility: 4.2664144610677965
+→ Best action index:    10
+→ Best contract w:       [0.         0.         0.         0.         6.08819015]
+[*] Instance 0: 0.4241062443555612
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+→ Best action index:    99
+→ Best contract w:       [0.         0.         0.         1.12446972 3.61685831]
+→ Best principal utility: 4.775279434203503
+→ Best action index:    5
+→ Best contract w:       [0. 0. 0. 0. 0.]
+[*] Instance 1: 100.44690071448164
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+→ Best action index:    99
+→ Best contract w:       [0.         0.         0.         3.94248941 4.68859719]
+→ Best principal utility: 6.796460541060351
+→ Best action index:    3
+→ Best contract w:       [0. 0. 0. 0. 0.]
+[*] Instance 2: 101.40257030673216
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+→ Best action index:    99
+→ Best contract w:       [0.77289566 0.         0.         0.         5.2899921 ]
+→ Best principal utility: 4.109724381917566
+→ Best action index:    2
+→ Best contract w:       [0.         0.         2.54213526 0.         4.9737349 ]
+[*] Instance 3: 1.5123967890154884
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_05.pkl with 5 instances.
+→ Best principal utility: 3.4351046687638447
+→ Best action index:    94
+→ Best contract w:       [1.23317453 0.         2.77318298 3.78799317 4.20489218]
+→ Best principal utility: 4.099193498927926
+→ Best action index:    4
+→ Best contract w:       [0.         2.35005465 0.         3.57819241 2.9473773 ]
+[*] Instance 4: 1.5672826771571562
+[*] Average:
+41.070651346348406

@@ -1,0 +1,80 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import pairwise_distances_argmin_min
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    n_candidates = min(15, len(accepted_logs) + len(rejected_logs) // 10 + 1)
+    m_outcomes = len(v)
+    
+    def create_single_strategy(wage_vec, principal_util, init_p=None):
+        if init_p is None:
+            init_p = np.ones(m_outcomes) / m_outcomes
+        
+        def objective(p):
+            return np.sum((p @ wage_vec) ** 2)
+        
+        constraints = [
+            {'type': 'eq', 'fun': lambda p: np.sum(p) - 1},
+            {'type': 'eq', 'fun': lambda p: p @ v - principal_util},
+            {'type': 'ineq', 'fun': lambda p: p}
+        ]
+        
+        bounds = [(0, 1) for _ in range(m_outcomes)]
+        res = minimize(objective, init_p, method='SLSQP', bounds=bounds, constraints=constraints)
+        return res.x if res.success else None
+    
+    candidate_ps = []
+    utilities = []
+    wages_accepted = []
+    
+    for log in accepted_logs:
+        p_candidate = create_single_strategy(log['Contract'], log['Principal Utility'])
+        if p_candidate is not None:
+            candidate_ps.append(p_candidate)
+            utilities.append(log['Principal Utility'])
+            wages_accepted.append(log['Contract'])
+    
+    if not candidate_ps:
+        candidate_ps = [np.ones(m_outcomes) / m_outcomes]
+        utilities = [0.0]
+        wages_accepted = [np.zeros(m_outcomes)]
+    
+    cluster_data = np.array(candidate_ps)
+    if cluster_data.shape[0] >= n_candidates:
+        kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=20).fit(cluster_data)
+        p0 = kmeans.cluster_centers_
+    else:
+        n_candidates = cluster_data.shape[0]
+        p0 = cluster_data.copy()
+    
+    all_wages = np.array([log['Contract'] for log in content])
+    cluster_assignments, _ = pairwise_distances_argmin_min(cluster_data, p0)
+    
+    estimated_costs = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        mask = (cluster_assignments == a)
+        if np.any(mask):
+            cluster_wages = np.array(wages_accepted)[mask]
+            cluster_utils = np.array(utilities)[mask]
+            min_utility = cluster_utils.max() if cluster_utils.size > 0 else 0
+            utilities_product = p0[a] @ cluster_wages.T
+            estimated_costs[a] = max(0, np.max(utilities_product) - min_utility)
+        else:
+            estimated_costs[a] = 0.0
+    
+    if rejected_logs:
+        rejected_wages = np.array([log['Contract'] for log in rejected_logs])
+        rejection_profits = p0 @ rejected_wages.T
+        rejection_costs = rejection_profits.max(axis=1, initial=-np.inf)
+        estimated_costs = np.maximum(estimated_costs, rejection_costs)
+    
+    agent_setting = np.hstack([p0, estimated_costs.reshape(-1, 1)])
+    return agent_setting
+```

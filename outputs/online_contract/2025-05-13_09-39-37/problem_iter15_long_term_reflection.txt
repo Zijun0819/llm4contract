@@ -1,0 +1,1 @@
+Use tighter LP tolerances and strict normalization; apply finer, adaptive clustering eps with validated min_samples; increase iteration count and cost refinement granularity; balance clustering sensitivity to avoid noise; enforce strict IR/IC constraints while ensuring stability and robust agent setting inference.

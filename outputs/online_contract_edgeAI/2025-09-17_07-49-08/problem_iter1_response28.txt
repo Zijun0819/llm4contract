@@ -1,0 +1,54 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_candidates = 5
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def solve_lp(w: np.ndarray) -> tuple[np.ndarray, float]:
+        c = -w
+        A = np.array([np.ones(m_outcomes), v]).reshape(2, m_outcomes)
+        b = np.array([1.0, 0.0])
+        bounds = [(0, 1)] * m_outcomes
+        result = linprog(c, A_eq=A, b_eq=b, bounds=bounds, method="highs")
+        if result.success:
+            return result.x, -result.fun
+        else:
+            return np.zeros(m_outcomes), -np.inf
+
+    accepted_ps = []
+    accepted_utilities = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            p, u = solve_lp(log['Contract'])
+            if np.isfinite(u):
+                accepted_ps.append(p)
+                accepted_utilities.append(u)
+
+    if not accepted_ps:
+        return np.array([[1/m_outcomes]*m_outcomes + [0.0]])
+    
+    accepted_ps = np.array(accepted_ps)
+    kmeans = KMeans(n_clusters=min(n_candidates, len(accepted_ps)), random_state=0, n_init=10)
+    kmeans.fit(accepted_ps)
+    p0 = kmeans.cluster_centers_
+    
+    costs = []
+    for p in p0:
+        costs.append(0.0)
+        
+        utilities = []
+        for log in content:
+            if log['Agent Action'] == 1:
+                utilities.append(log['Contract'] @ p)
+        
+        if utilities:
+            costs[-1] = min(utilities)
+
+    agent_setting = np.hstack([p0, np.array(costs)[:, np.newaxis]])
+
+    return agent_setting
+```

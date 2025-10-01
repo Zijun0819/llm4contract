@@ -1,0 +1,69 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from collections import defaultdict
+import cvxpy as cp
+
+def agent_solver(v: np.array, content: list[dict]) -> np.array:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    n_data = len(accepted_logs)
+    m_outcomes = 12
+    k_actions = min(max(2, int(np.sqrt(n_data)) + 1), 20)
+    
+    if n_data == 0:
+        trv_p = np.full(m_outcomes, 1.0/m_outcomes)
+        trv_c = 0.0
+        return np.hstack([trv_p.reshape(1, -1), np.array([[trv_c]])])
+
+    def solve_p(w, u_p, reg=1e-4):
+        w_arr = np.array(w)
+        p = cp.Variable(m_outcomes)
+        constraints = [
+            p >= 0,
+            cp.sum(p) == 1,
+            cp.sum(p * (v - w_arr)) == u_p
+        ]
+        prob = cp.Problem(cp.Minimize(cp.sum_squares(p) + reg * cp.sum_squares(p)), constraints)
+        prob.solve(solver=cp.SCS)
+        return p.value if prob.status == 'optimal' else None
+
+    candidate_ps = []
+    for log in accepted_logs:
+        w_i = log['Contract']
+        u_i = log['Principal Utility']
+        p_sol = solve_p(w_i, u_i)
+        if p_sol is not None:
+            candidate_ps.append(p_sol)
+    
+    if not candidate_ps:
+        trv_p = np.full(m_outcomes, 1.0/m_outcomes)
+        trv_c = 0.0
+        return np.hstack([trv_p.reshape(1, -1), np.array([[trv_c]])])
+
+    ps_matrix = np.vstack(candidate_ps)
+    kmeans = KMeans(n_clusters=k_actions, random_state=0, n_init=20).fit(ps_matrix)
+    centers = kmeans.cluster_centers_
+    max_k = centers.shape[0]
+    ws_all = [log['Contract'] for log in accepted_logs]
+    action_assign = kmeans.predict(ps_matrix)
+    action_min_bounds = defaultdict(list)
+    for idx, a in enumerate(action_assign):
+        w_vec = ws_all[idx]
+        u_val = centers[a] @ w_vec
+        action_min_bounds[a].append(u_val)
+    min_costs = [np.min(action_min_bounds[a]) if a in action_min_bounds else 0.0 for a in range(max_k)]
+
+    reject_logs = [log for log in content if log['Agent Action'] == -1]
+    if reject_logs:
+        w_rej = np.array([log['Contract'] for log in reject_logs])
+        rej_utils = centers @ w_rej.T
+        rej_costs = np.max(rej_utils, axis=1)
+        adjusted_costs = np.maximum(min_costs, rej_costs)
+    else:
+        adjusted_costs = min_costs
+
+    agent_setting = np.hstack([centers, adjusted_costs.reshape(-1, 1)])
+    return agent_setting
+```

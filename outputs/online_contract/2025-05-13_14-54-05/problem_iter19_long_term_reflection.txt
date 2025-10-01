@@ -1,0 +1,1 @@
+Apply unweighted KMeans on normalized accepted contract distributions; enforce tighter IR/IC margins with exact LP equalities; robustly detect and remove empty clusters early; normalize probabilities twice—before and after cost updates—to ensure feasibility and stable, valid agent settings.

@@ -1,0 +1,1 @@
+Refine GMM clusters via BIC; infer minimum costs from accepted contracts and max rejection utilities. Smooth distributions, enforce strict IR/IC via linear programming. Use all logs to tighten bounds and optimize action probabilities.

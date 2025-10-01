@@ -1,0 +1,82 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_candidates = 5
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def mini_lp_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        """Solve for agent outcome distribution p given wage vector w and utility u."""
+        m = len(w)
+        A_eq = [np.ones(m)]  # , v - w]
+        b_eq = [1.0]  # , u]
+        bounds = [(0, 1)] * m
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    # Step 1: Filter accepted contracts and solve mini LPs
+    candidate_ps = []
+    candidate_us = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w_i = np.array(log['Contract'])
+            u_i = log['Principal Utility']
+            p_i = mini_lp_p(w_i, 0) # set target utility to 0
+            if p_i is not None:
+                candidate_ps.append(p_i)
+                candidate_us.append(u_i)
+
+    if not candidate_ps:
+        return np.array([[1/m_outcomes] * m_outcomes + [0.0]])
+
+    all_p = np.array(candidate_ps)
+    all_us = np.array(candidate_us)
+
+    # Step 2: Cluster inferred p vectors using Gaussian Mixture Model
+    gmm = GaussianMixture(n_components=n_candidates, random_state=0, covariance_type='full', max_iter=500)
+    gmm.fit(all_p)
+    p0 = gmm.means_
+
+    # Step 3: Estimate cost for each action
+    c_init = np.zeros(n_candidates)
+    for k in range(n_candidates):
+        # Collect accepted contracts for each cluster
+        contracts_k = []
+        for i, log in enumerate(content):
+            if log['Agent Action'] == 1:
+                w = np.array(log['Contract'])
+                prob = gmm.predict_proba(all_p)[i]
+
+        # Estimate cost as minimum expected wage across accepted contracts
+        expected_wages = []
+        for i, log in enumerate(content):
+            if log['Agent Action'] == 1:
+                w = np.array(log['Contract'])
+                expected_wages.append(p0[k] @ w)
+
+        if expected_wages:
+            c_init[k] = min(expected_wages)
+        else:
+            c_init[k] = 0.0
+
+    # Step 4: Refine cost based on rejection behavior
+    for i, log in enumerate(content):
+        if log['Agent Action'] == -1:
+            w = np.array(log['Contract'])
+            expected_utilities = [p0[k] @ w - c_init[k] for k in range(n_candidates)]
+            best_action = np.argmax(expected_utilities)
+            c_init[best_action] = max(c_init[best_action], p0[best_action] @ w)
+
+    # Step 5: Ensure non-negativity of costs
+    c_init = np.maximum(c_init, 0)
+
+    # Step 6: Format agent setting
+    agent_setting = np.hstack([p0, c_init[:, np.newaxis]])
+    return agent_setting
+```

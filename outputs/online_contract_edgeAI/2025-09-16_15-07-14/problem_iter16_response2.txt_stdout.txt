@@ -1,0 +1,81 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py:21: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}. These will be passed to HiGHS verbatim.
+  p = res.x
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.9791 seconds
+→ Best principal utility: 0.00034701420442674813
+→ The corresponding best action is: 1
+→ The corresponding agent utility is: 1.0001765041178778e-16
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0005825079920778835
+→ The corresponding best action is: 5
+→ The corresponding agent utility is: 2.9649138839758233e-05
+→ The principal utility gap is: 0.0006193891649213826-0.0005825079920778835=3.6881172843499063e-05
+→ Agent and principal score:    0 3.6881172843499063e-05
+[*] Instance 0: 3.6881172843499063e-05
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py:21: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}. These will be passed to HiGHS verbatim.
+  p = res.x
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.3763 seconds
+→ Best principal utility: 0.0003393380963932213
+→ The corresponding best action is: 26
+→ The corresponding agent utility is: 1.0001765041178778e-16
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0005938422555236882
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 2.554690939779443e-05
+→ The principal utility gap is: 0.0006193891649213826-0.0005938422555236882=2.55469093976944e-05
+→ Agent and principal score:    0 2.55469093976944e-05
+[*] Instance 1: 2.55469093976944e-05
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py:21: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}. These will be passed to HiGHS verbatim.
+  p = res.x
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\mixture\_base.py:269: ConvergenceWarning: Best performing initialization did not converge. Try different init parameters, or increase max_iter, tol, or check for degenerate data.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.6094 seconds
+IC violation for a*=19: best at 27 (Δ=2.07e-09)
+→ Best principal utility: 0.00034724582497047967
+→ The corresponding best action is: 0
+→ The corresponding agent utility is: 1.0007186052041206e-16
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0004977601873851411
+→ The corresponding best action is: 1
+→ The corresponding agent utility is: 5.2985072870316926e-05
+→ The principal utility gap is: 0.0006193891649213826-0.0004977601873851411=0.00012162897753624144
+→ Agent and principal score:    0 0.00012162897753624144
+[*] Instance 2: 0.00012162897753624144
+[*] Average:
+6.135235325914496e-05

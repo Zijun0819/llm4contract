@@ -1,0 +1,135 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import AgglomerativeClustering
+from scipy.spatial.distance import pdist, squareform
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = len(v)
+    n_attempts = [2, 3, 4, 5, 6, 7, 8]
+    best_bic = -np.inf
+    best_clusters = None
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    if not accepted_logs:
+        raise ValueError("No accepted contracts in logs")
+    
+    wage_vectors = np.array([log['Contract'] for log in accepted_logs])
+    principal_utils = np.array([log['Principal Utility'] for log in accepted_logs])
+    
+    def solve_p_from_log(w, u):
+        res = linprog(-w, A_eq=np.vstack([np.ones_like(w), (v - w)]).T,
+                     b_eq=[1, u], bounds=[(0, 1)]*len(w), method='highs')
+        return res.x if res.success else None
+    
+    inferred_ps = []
+    for w, u in zip(wage_vectors, principal_utils):
+        p_est = solve_p_from_log(w, u)
+        if p_est is not None:
+            inferred_ps.append(p_est)
+    
+    if not inferred_ps:
+        p_default = np.ones(m_outcomes) / m_outcomes
+        inferred_ps = [p_default] * len(accepted_logs)
+    
+    inferred_ps = np.array(inferred_ps)
+    
+    for n in n_attempts:
+        clustering = AgglomerativeClustering(n_clusters=n, metric='euclidean', linkage='ward')
+        labels = clustering.fit_predict(inferred_ps)
+        cluster_centers = np.array([inferred_ps[labels == i].mean(axis=0) for i in range(n)])
+        within_var = sum(np.sum((inferred_ps[labels == i] - cluster_centers[i])**2) for i in range(n))
+        bic = -within_var - n * np.log(len(inferred_ps))
+        if bic > best_bic:
+            best_bic = bic
+            best_clusters = cluster_centers
+            best_n = n
+    
+    p0 = best_clusters
+    n_actions = best_n
+    
+    assignments = np.zeros(len(content), dtype=int)
+    for idx, log in enumerate(content):
+        if log['Agent Action'] == 1:
+            w_vec = np.array(log['Contract'])
+            util_values = p0 @ w_vec
+            assignments[idx] = np.argmax(util_values)
+    
+    rej_indices = [i for i, log in enumerate(content) if log['Agent Action'] == -1]
+    rej_wages = np.array([content[i]['Contract'] for i in rej_indices]).T if rej_indices else np.zeros((m_outcomes, 0))
+    
+    def cost_optimization(c_vec):
+        c_vec = np.maximum(c_vec, 0)
+        violation = 0
+        for idx, log in enumerate(content):
+            w = np.array(log['Contract'])
+            ae = assignments[idx]
+            max_other_u = max((p0[a] @ w - c_vec[a] for a in range(n_actions) if a != ae), default=-np.inf)
+            util_ae = p0[ae] @ w - c_vec[ae]
+            if log['Agent Action'] == 1:
+                violation += max(0, max_other_u - util_ae) + max(0, -util_ae)
+            else:
+                violation += max(0, util_ae + 1e-6)
+        for a in range(n_actions):
+            idxs = np.where(assignments == a)[0]
+            if idxs.size > 0:
+                wages_a = np.array([content[i]['Contract'] for i in idxs]).T
+                min_util_a = np.min(p0[a] @ wages_a - c_vec[a])
+                violation += max(0, -min_util_a)
+        return violation
+    
+    c0 = np.zeros(n_actions)
+    for a in range(n_actions):
+        assigned_logs = [i for i, asg in enumerate(assignments) if asg == a and content[i]['Agent Action'] == 1]
+        if assigned_logs:
+            wages_a = np.array([content[i]['Contract'] for i in assigned_logs]).T
+            c0[a] = np.min(p0[a] @ wages_a)
+        else:
+            c0[a] = 0
+    
+    if rej_indices:
+        max_rejection_utils = np.max(p0 @ rej_wages, axis=1)
+        c0 = np.maximum(c0, max_rejection_utils)
+    
+    res = minimize(cost_optimization, c0, method='Nelder-Mead', options={'maxiter': 1000})
+    c_optimized = np.maximum(res.x, 0)
+    
+    final_assignment_valid = True
+    for idx, log in enumerate(content):
+        w = np.array(log['Contract'])
+        ae = assignments[idx]
+        util_ae = p0[ae] @ w - c_optimized[ae]
+        max_other = max((p0[a] @ w - c_optimized[a] for a in range(n_actions) if a != ae), default=-np.inf)
+        if log['Agent Action'] == 1 and (util_ae < 0 or max_other > util_ae):
+            final_assignment_valid = False
+            break
+        if log['Agent Action'] == -1 and util_ae >= 0:
+            final_assignment_valid = False
+            break
+    
+    if not final_assignment_valid:
+        for idx, log in enumerate(content):
+            if log['Agent Action'] == 1:
+                w = np.array(log['Contract'])
+                for a in range(n_actions):
+                    util_a = p0[a] @ w - c_optimized[a]
+                    if util_a >= 0:
+                        assignments[idx] = a
+                        break
+    
+    for a in range(n_actions):
+        assigned_logs = [i for i, asg in enumerate(assignments) if asg == a and content[i]['Agent Action'] == 1]
+        if assigned_logs:
+            wages_a = np.array([content[i]['Contract'] for i in assigned_logs]).T
+            c_optimized[a] = np.min(p0[a] @ wages_a)
+        else:
+            c_optimized[a] = 0
+    
+    if rej_indices:
+        max_rej_utils = np.max(p0 @ rej_wages, axis=1)
+        c_optimized = np.maximum(c_optimized, max_rej_utils)
+    
+    agent_setting = np.hstack([p0, c_optimized.reshape(-1, 1)])
+    return agent_setting
+```

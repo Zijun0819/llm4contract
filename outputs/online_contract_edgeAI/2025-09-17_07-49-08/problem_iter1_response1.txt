@@ -1,0 +1,57 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import normalize
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_candidates = 5
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def mini_lp_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        """Solve for agent outcome distribution p given wage vector w and utility u."""
+        m = len(w)
+        A_eq = [np.ones(m)]
+        b_eq = [1.0]
+        bounds = [(0, 1)] * m
+        A_ub = [-(v - w)]
+        b_ub = [-u]
+        res = linprog(w, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w_i = log['Contract']
+            u_i = log['Principal Utility']
+            p_i = mini_lp_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+
+    if not candidate_ps:
+        p0 = np.random.rand(n_candidates, m_outcomes)
+        p0 = normalize(p0, axis=1, norm='l1')
+        c_init = np.zeros(n_candidates)
+        agent_setting = np.hstack([p0, c_init[:, np.newaxis]])
+        return agent_setting
+
+    all_p = np.array(candidate_ps)
+
+    kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=10)
+    kmeans.fit(all_p)
+    p0 = kmeans.cluster_centers_
+
+    c_init = np.zeros(n_candidates)
+    for i in range(n_candidates):
+        distances = np.linalg.norm(all_p - p0[i], axis=1)
+        min_dist_index = np.argmin(distances)
+        corresponding_log = content[candidate_ps.index(all_p[min_dist_index])]
+        c_init[i] = p0[i] @ corresponding_log['Contract'] - corresponding_log['Principal Utility']
+        c_init[i] = max(0, c_init[i])
+
+    agent_setting = np.hstack([p0, c_init[:, np.newaxis]])
+
+    return agent_setting
+```

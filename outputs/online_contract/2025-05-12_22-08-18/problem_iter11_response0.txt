@@ -1,0 +1,175 @@
+```python
+import numpy as np
+from sklearn.cluster import AgglomerativeClustering
+from scipy.optimize import linprog
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Enhanced agent setting inference consistent with historical logs,
+    enforcing IR/IC constraints via LP, adaptive clustering with weighted centroids,
+    minimal dummy actions for unexplained accepted contracts, iterative cost refinement,
+    precise normalization of probabilities, and tight rejection margins.
+
+    Params:
+        v (np.ndarray): Principal's value vector (length 5)
+        content (list[dict]): each dict has keys: 'Contract' (list of 5),
+                              'Principal Utility' (float),
+                              'Agent Action' (1 or -1)
+
+    Returns:
+        np.ndarray: n_actions x 6 (5 probabilities + 1 cost)
+    """
+    m_outcomes = v.size
+    L = len(content)
+
+    # Extract arrays
+    contracts = np.array([log['Contract'] for log in content])  # shape (L,5)
+    ag_actions = np.array([log['Agent Action'] for log in content])  # shape (L,)
+    p_util = np.array([log['Principal Utility'] for log in content])  # shape (L,)
+
+    accepted_ix = np.where(ag_actions == 1)[0]
+    rejected_ix = np.where(ag_actions == -1)[0]
+
+    # If no accepted contracts, return trivial uniform action with zero cost
+    if accepted_ix.size == 0:
+        return np.hstack([np.ones((1, m_outcomes)) / m_outcomes, np.array([[0.]])])
+
+    accepted_contracts = contracts[accepted_ix]
+
+    # Normalize contracts to probability simplex for clustering; avoid division by zero
+    norm_w = accepted_contracts / (accepted_contracts.sum(axis=1, keepdims=True) + 1e-14)
+
+    # Adaptive number of clusters: min(10, #accepted, max(1, int(sqrt(#accepted))))
+    n_max_actions = max(1, min(10, int(np.sqrt(len(accepted_ix))), len(accepted_ix)))
+
+    clustering = AgglomerativeClustering(n_clusters=n_max_actions, linkage='average')
+    labels = clustering.fit_predict(norm_w)
+
+    p_candidates = []
+    costs_lb = []
+
+    # Compute cluster centroids weighted by (principal utility - min + 1)^1.5 for sharper weighting,
+    # then project to simplex (clip negative values and renormalize)
+    for c in range(n_max_actions):
+        cluster_idx = accepted_ix[labels == c]
+        if cluster_idx.size == 0:
+            continue
+        cluster_w = contracts[cluster_idx]
+        cluster_p_util = p_util[cluster_idx]
+
+        # Weight emphasizing higher principal utility observations
+        weights = (cluster_p_util - cluster_p_util.min() + 1) ** 1.5
+        avg_w = np.average(cluster_w, axis=0, weights=weights)
+
+        # Clip negatives and project to simplex
+        p = np.clip(avg_w, 0, None)
+        s = p.sum()
+        if s < 1e-14:
+            p = np.ones(m_outcomes) / m_outcomes
+        else:
+            p = p / s
+        p_candidates.append(p)
+
+        # Cost lower bound from accepted contracts in cluster: cost <= p @ w_i (utility >= 0)
+        costs_cluster = np.array([p @ contracts[i] for i in cluster_idx])
+        min_cost = costs_cluster.min()
+        costs_lb.append(min_cost)
+
+    p_candidates = np.array(p_candidates)
+    costs_lb = np.array(costs_lb)
+
+    # Handle rejected contracts constraints: cost > max_r p @ w_r for all actions a
+    if rejected_ix.size > 0:
+        reject_contracts = contracts[rejected_ix]
+        p_w_rej = p_candidates @ reject_contracts.T  # shape (n_actions, n_rejected)
+        c_rej_min = p_w_rej.max(axis=1) + 1e-6
+    else:
+        c_rej_min = np.zeros(len(p_candidates))
+
+    # Initial costs satisfying both accepted and rejected constraints
+    costs = np.maximum(costs_lb, c_rej_min)
+    costs = np.maximum(costs, 0)
+
+    # Helper: check if an action explains an accepted contract (utility >= 0)
+    def valid_action_for_contract(w_i):
+        for a, (p, c) in enumerate(zip(p_candidates, costs)):
+            util = p @ w_i - c
+            if util >= -1e-10:
+                return a
+        return None
+
+    # Add minimal dummy actions exactly matching unexplained accepted contracts
+    for i in accepted_ix:
+        w_i = contracts[i]
+        if valid_action_for_contract(w_i) is None:
+            p_new = np.clip(w_i, 0, None)
+            s = p_new.sum()
+            if s < 1e-14:
+                p_new = np.ones(m_outcomes) / m_outcomes
+            else:
+                p_new = p_new / s
+            c_new = p_new @ w_i
+            p_candidates = np.vstack([p_candidates, p_new])
+            costs = np.append(costs, c_new)
+
+    n_actions = len(p_candidates)
+
+    # Re-check rejection constraints after dummy actions, increase costs with small margin if needed
+    if rejected_ix.size > 0:
+        reject_contracts = contracts[rejected_ix]
+        p_w_rej = p_candidates @ reject_contracts.T  # shape (n_actions, n_rejected)
+        for a in range(n_actions):
+            max_rej_util = p_w_rej[a].max()
+            if costs[a] < max_rej_util + 1e-8:
+                costs[a] = max_rej_util + 1e-5  # tightened margin
+
+    # Setup LP to refine costs:
+    # Variables: costs c_a (length n_actions)
+    # Constraints:
+    # 1) For each rejected contract r and action a: c_a >= p_a @ w_r + epsilon
+    # 2) For each accepted contract i: there exists some action a s.t. c_a <= p_a @ w_i
+    #    (non-convex, handled by dummy actions and heuristics)
+    # Objective: minimize sum of costs to regularize
+
+    epsilon = 1e-7
+    c_obj = np.ones(n_actions)  # minimize sum of costs
+
+    A_ub = []
+    b_ub = []
+
+    # c_a >= p_a @ w_r + epsilon  =>  -c_a <= - (p_a @ w_r + epsilon)
+    for a in range(n_actions):
+        for r in rejected_ix:
+            val = p_candidates[a] @ contracts[r] + epsilon
+            row = np.zeros(n_actions)
+            row[a] = -1
+            A_ub.append(row)
+            b_ub.append(-val)
+
+    if len(A_ub) > 0:
+        A_ub = np.vstack(A_ub)
+        b_ub = np.array(b_ub)
+    else:
+        A_ub = None
+        b_ub = None
+
+    bounds = [(0, None)] * n_actions
+
+    res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+    if res.success:
+        costs = res.x
+    else:
+        # fallback: keep prior costs; they satisfy rejection constraints
+        pass
+
+    # Final normalization of p_candidates to valid probability distributions
+    p_candidates = np.clip(p_candidates, 0, None)
+    sums = p_candidates.sum(axis=1, keepdims=True)
+    sums[sums < 1e-14] = 1.0
+    p_candidates /= sums
+
+    # Compose final agent setting matrix n_actions x 6 (5 probs + cost)
+    agent_setting = np.hstack([p_candidates, costs[:, None]])
+
+    return agent_setting
+```

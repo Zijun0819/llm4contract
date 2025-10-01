@@ -1,0 +1,1 @@
+Use adaptive clustering (e.g., Bayesian GMM) with rejection logs to set cost bounds. Tighten IC/IR via max utility penalties and average conflicts to minimize violations while handling edge cases.

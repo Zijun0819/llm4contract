@@ -1,0 +1,24 @@
+Incorporate principal utility in `mini_lp_p`, increase `n_candidates`, refine cost initialization using accepted/rejected contracts.
+
+Refine `mini_lp_p` with utility constraint. Adjust `n_candidates` based on data size. Improve cost initialization using both accepted and rejected contracts.
+
+Increase `n_candidates`, use `k-means++` initialization, and constrain cost estimation to be non-positive.
+
+Leverage principal utility in `mini_lp_p`. Increase `n_candidates`. Use `min` of accepted contract utilities for cost.
+
+Use principal's utility in `mini_lp_p`. Consider agent's utility `w-v` for cost initialization. Increase `n_candidates`.
+
+Minimize agent utility for rejections. Refine cost estimation using both accepted and rejected contracts. Increase K-means `n_init`.
+
+Use `mini_lp_p` for accepted contracts; average expected utility for cost initialization.
+
+Here's a breakdown of the key improvements and hints:
+
+*   **`mini_lp_p` Constraint:** The better code adds `v - w` constraint to `mini_lp_p`. This directly incorporates principal's utility into agent's action inference.
+
+*   **Cost initialization:** The better code initializes `c_init` by considering both rejected and accepted contracts, leading to a more robust cost estimation.
+
+Use `linprog` for accepted contracts. Consider `v-w` when calculating costs. Increase `n_candidates` and `n_init`.
+
+Refine `mini_lp_p` with principal's utility constraint. Optimize rejection sampling. Adjust `n_candidates` and K-means algorithm.
+

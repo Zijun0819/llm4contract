@@ -1,0 +1,10 @@
+Refine cost computation using cluster assignments, iterate to enforce IC/IR, and merge similar actions.
+Use K-means for efficiency, then refine with Gaussian Mixture. Ensure proper normalization and cost clipping.
+Use KMeans first, refine with GMM for clusters and cost calibration.
+Refine clustering with GMM after KMeans; adjust costs carefully using strict epsilon thresholds.
+Use KMeans for initial clustering, refine with GMM for accuracy, and deduplicate similar actions.
+Use GMM clustering, ensure costs satisfy IR/IC via epsilon bounds, handle zero sums robustly.
+Use clustering after LP to refine action distributions and costs.
+Refine clustering: Use KMeans first, then GMM for better density estimation and cost bounds.
+Use Gaussian mixture clustering with refined cost adjustment from min utility; ensure unique centers.
+Refine clustering parameters; use Gaussian Mixture directly for smoother distributions.

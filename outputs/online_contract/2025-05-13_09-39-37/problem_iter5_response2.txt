@@ -1,0 +1,233 @@
+```python
+import numpy as np
+import pandas as pd
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.metrics import silhouette_score
+from scipy.optimize import linprog
+from sklearn.metrics.pairwise import cosine_similarity
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting (probability distributions over outcomes + costs)
+    explaining the historical interaction logs between principal and agent,
+    by clustering accepted logs' inferred outcome distributions and inferring costs
+    to satisfy IR and IC constraints for accepted and rejected contracts.
+
+    Args:
+        v (np.ndarray): Principal's reward vector for 5 outcomes, shape (5,)
+        content (list[dict]): Each dict contains:
+            - 'Contract': 5-dim payment vector,
+            - 'Principal Utility': principal utility under contract,
+            - 'Agent Action': 1 for accept, -1 for reject.
+
+    Returns:
+        np.ndarray: n x 6 matrix: first 5 cols are outcome probabilities (sum=1),
+                    last column is agent cost (≥0).
+    """
+    m_outcomes = v.shape[0]
+    logs_df = pd.DataFrame(content)
+    accepted = logs_df[logs_df['Agent Action'] == 1].reset_index(drop=True)
+    rejected = logs_df[logs_df['Agent Action'] == -1].reset_index(drop=True)
+
+    # If no accepted contracts, return trivial agent with uniform dist and zero cost
+    if accepted.empty:
+        return np.hstack([np.ones((1, m_outcomes)) / m_outcomes, np.zeros((1, 1))])
+
+    # Step 1: Infer p for each accepted contract by LP
+    def infer_p_for_log(w, u_p):
+        # Solve LP:
+        # variables: p (length m_outcomes)
+        # constraints:
+        #   sum p = 1
+        #   p @ (v - w) = u_p
+        # bounds: p_i in [0,1]
+        # objective: maximize p @ w (agent expected payment)
+        c_obj = -np.array(w)
+        A_eq = [np.ones(m_outcomes), v - np.array(w)]
+        b_eq = [1.0, u_p]
+        bounds = [(0, 1) for _ in range(m_outcomes)]
+        res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p = res.x
+            # Numerical fix: clip and re-normalize
+            p = np.clip(p, 0, None)
+            s = p.sum()
+            if s > 0:
+                p /= s
+            else:
+                p = np.ones(m_outcomes) / m_outcomes
+            return p
+        else:
+            # fallback: uniform distribution
+            return np.ones(m_outcomes) / m_outcomes
+
+    p_list = [infer_p_for_log(row['Contract'], row['Principal Utility']) for _, row in accepted.iterrows()]
+    p_array = np.vstack(p_list)  # shape (n_accept, m_outcomes)
+
+    # Step 2: Jointly cluster accepted and rejected logs using hierarchical clustering (cosine metric)
+    # We include rejected logs' contracts as points with inferred p = w normalized
+    contract_acc = np.array(accepted['Contract'].tolist())
+    contract_rej = np.array(rejected['Contract'].tolist()) if not rejected.empty else np.empty((0, m_outcomes))
+
+    # For rejected logs, approximate p as normalized contract vector (payment vector)
+    # This is a heuristic to embed rejects in the same space
+    if contract_rej.shape[0] > 0:
+        rej_p = contract_rej / (contract_rej.sum(axis=1, keepdims=True) + 1e-12)
+    else:
+        rej_p = np.empty((0, m_outcomes))
+
+    # Combine all points for clustering: accepted inferred p and rejected approximated p
+    all_p = np.vstack([p_array, rej_p])
+    n_accept = p_array.shape[0]
+    n_reject = rej_p.shape[0]
+
+    # Determine number of clusters adaptively using silhouette score over 2 to min(10, n_accept)
+    max_clusters = min(10, max(2, n_accept))
+    best_n_clusters = None
+    best_labels = None
+    best_silhouette = -1
+
+    # Use AgglomerativeClustering with cosine affinity (via precomputed distances)
+    # sklearn's AgglomerativeClustering does not support cosine affinity directly,
+    # so we compute cosine distances manually and use 'precomputed' linkage
+    # However, linkage 'ward' requires Euclidean metric, so we use 'average' linkage with cosine distances
+
+    # Compute cosine similarity matrix and convert to distance
+    cos_sim = cosine_similarity(all_p)
+    cos_dist = 1 - cos_sim
+
+    for n_clusters in range(2, max_clusters + 1):
+        clustering = AgglomerativeClustering(
+            n_clusters=n_clusters, affinity='precomputed', linkage='average'
+        )
+        labels = clustering.fit_predict(cos_dist)
+        # Silhouette score requires Euclidean metric, but we can use cosine distances:
+        try:
+            sil = silhouette_score(all_p, labels, metric='cosine')
+            if sil > best_silhouette:
+                best_silhouette = sil
+                best_n_clusters = n_clusters
+                best_labels = labels.copy()
+        except Exception:
+            continue
+
+    # If no good clustering found, fallback to 1 cluster
+    if best_labels is None:
+        best_labels = np.zeros(all_p.shape[0], dtype=int)
+        best_n_clusters = 1
+
+    # Extract accepted and rejected labels
+    labels_acc = best_labels[:n_accept]
+    labels_rej = best_labels[n_accept:]
+
+    n_actions = best_n_clusters
+
+    # Step 3: Compute cluster centers (mean p per cluster)
+    centers = np.zeros((n_actions, m_outcomes))
+    for a in range(n_actions):
+        members = all_p[best_labels == a]
+        if members.shape[0] == 0:
+            centers[a] = np.ones(m_outcomes) / m_outcomes
+        else:
+            c = members.mean(axis=0)
+            c = np.clip(c, 0, None)
+            s = c.sum()
+            if s > 0:
+                c /= s
+            else:
+                c = np.ones(m_outcomes) / m_outcomes
+            centers[a] = c
+
+    # Step 4: Infer minimal costs c_a satisfying IR and IC constraints via LP
+    # Variables: costs c_a >= 0, shape (n_actions,)
+    # Constraints:
+    #  - For each accepted contract i assigned to action a=labels_acc[i]:
+    #       p_a @ w_i - c_a >= 0  => c_a <= p_a @ w_i
+    #  - For each rejected contract j:
+    #       For all a: p_a @ w_j - c_a < 0  => c_a > p_a @ w_j
+    # We formulate LP to find minimal costs satisfying:
+    #   c_a >= 0
+    #   c_a <= min_{i assigned to a} p_a @ w_i
+    #   c_a > max_{j} p_a @ w_j
+    # If constraints infeasible, relax slightly.
+
+    contract_acc_w = contract_acc
+    contract_rej_w = contract_rej
+
+    # Compute p_a @ w for all accepted contracts
+    p_acc = centers[labels_acc]  # shape (n_accept, m_outcomes)
+    acc_vals = np.einsum('ij,ij->i', p_acc, contract_acc_w)  # shape (n_accept,)
+
+    # For each action a, find minimal p_a @ w over accepted contracts assigned to a
+    min_acc_vals = np.full(n_actions, np.inf)
+    for a in range(n_actions):
+        idxs = np.where(labels_acc == a)[0]
+        if idxs.size > 0:
+            min_acc_vals[a] = acc_vals[idxs].min()
+        else:
+            min_acc_vals[a] = 0.0  # no accepted assigned, no upper bound from IR
+
+    # For each action a, find maximal p_a @ w over all rejected contracts
+    if contract_rej_w.shape[0] > 0:
+        rej_vals = contract_rej_w @ centers.T  # shape (n_reject, n_actions)
+        max_rej_vals = rej_vals.max(axis=0)  # shape (n_actions,)
+    else:
+        max_rej_vals = np.full(n_actions, -np.inf)
+
+    # Setup LP to find costs c minimizing sum c with constraints:
+    # c_a >= 0
+    # c_a <= min_acc_vals[a]
+    # c_a >= max_rej_vals[a] + eps_cost
+    eps_cost = 1e-8
+
+    # Objective: minimize sum c_a
+    c_obj = np.ones(n_actions)
+
+    # Bounds: c_a in [lower_bound, upper_bound]
+    bounds = []
+    for a in range(n_actions):
+        low = max(max_rej_vals[a] + eps_cost, 0.0)
+        high = min_acc_vals[a] if min_acc_vals[a] < np.inf else None
+        if high is not None and high < low:
+            # Infeasible, relax high to low + eps_cost
+            high = low + eps_cost
+        bounds.append((low, high))
+
+    # linprog expects bounds as (min, max), max can be None for infinity
+    res = linprog(c=c_obj, bounds=bounds, method='highs')
+
+    if res.success:
+        costs = res.x
+    else:
+        # Fallback: costs = max(max_rej_vals + eps_cost, 0)
+        costs = np.maximum(max_rej_vals + eps_cost, 0.0)
+
+    # Step 5: Validate and refine costs iteratively to ensure all IR and IC hold
+    max_iter = 30
+    for _ in range(max_iter):
+        # Accepted logs: must have some action a with p_a @ w - c_a >= 0
+        accept_utils = contract_acc_w @ centers.T - costs  # shape (n_accept, n_actions)
+        accept_feasible = (accept_utils >= -eps_cost).any(axis=1)
+
+        # Rejected logs: must have all actions a with p_a @ w - c_a < 0
+        if contract_rej_w.shape[0] > 0:
+            reject_utils = contract_rej_w @ centers.T - costs  # shape (n_reject, n_actions)
+            reject_feasible = (reject_utils < eps_cost).all(axis=1)
+        else:
+            reject_feasible = np.array([True])
+
+        if accept_feasible.all() and reject_feasible.all():
+            break
+
+        # Increase costs slightly to enforce constraints
+        costs += eps_cost * 10
+        costs = np.maximum(costs, 0.0)
+
+    # Final normalization for numerical stability
+    centers = np.clip(centers, 0, None)
+    centers /= centers.sum(axis=1, keepdims=True)
+    costs = np.maximum(costs, 0.0)
+
+    agent_setting = np.hstack([centers, costs[:, None]])
+    return agent_setting
+```

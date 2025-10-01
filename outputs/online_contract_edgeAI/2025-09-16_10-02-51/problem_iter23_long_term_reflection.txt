@@ -1,0 +1,1 @@
+Enforce tighter cost bounds with smaller epsilon. Use weighted GMM clustering via principal utility. Strengthen IC constraints per interaction log. Optimize with quadratic penalties in SLSQP for robust convergence. Prioritize feasibility and sparsity.

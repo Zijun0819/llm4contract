@@ -1,0 +1,29 @@
+Better `mini_lp_p` constraints, `k-means++` initialization, and cost adjustment improve agent setting inference.
+
+Consider objective function sign in `minimize`, and K-means `n_init` parameter for stability.
+
+Consider principal's reward in `mini_lp_p` and objective function. Use `k-means++` initialization and `max(0, min(costs))` for `c_init`.
+
+1. `mini_lp_p`: Correct objective and constraints.
+2. `rejected_contracts`: Maximize agent's utility.
+3. `KMeans`: Increase `n_init`.
+4. `c_init`: Tighter cost initialization.
+5. Enforce IR constraints strictly.
+
+Optimize `mini_lp_p` objective, K-means `n_init`, and cost initialization; ensure non-negative costs and utility consistency.
+
+1. Correct `mini_lp_p` objective and constraints.
+2. Optimize rejected contract utility maximization.
+3. Improve K-means `n_init` and cost initialization.
+
+1. **LP Formulation:** Adjust LP objective/constraints for tighter bounds.
+2. **Objective Direction:** Maximize utility for rejected contracts.
+3. **K-means:** Increase `n_init` and refine cost initialization/correction.
+
+1. Correct the LP constraint sign.
+2. Use 'k-means++' for KMeans initialization.
+
+Optimize `mini_lp_p` objective, refine rejected contract handling, and tighten cost initialization using accepted contracts.
+
+Consider cost function sign in `mini_lp_p` and objective function in minimization. Increase `n_init` for KMeans.
+

@@ -1,0 +1,1 @@
+Focus clustering on outcome distributions using adaptive, weighted methods with tight radius thresholds. Enforce strict IR/IC via LP with multi-action inequalities and rejection margins. Normalize probabilities post cost adjustment robustly. Incorporate rejected logs and iteratively refine costs globally for improved agent setting fidelity.

@@ -1,0 +1,194 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, lsq_linear
+from sklearn.cluster import DBSCAN
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting (actions as (p, cost)) from historical logs:
+    - Each action: 5-d prob vector over outcomes + cost ≥ 0
+    - Satisfies agent IR and IC constraints implied by acceptance/rejection logs
+    """
+    m = v.size
+    logs = content.copy()
+    L = len(logs)
+
+    # Extract data arrays
+    contracts = np.vstack(logs['Contract'].values)  # shape (L, m)
+    principal_util = logs['Principal Utility'].values  # shape (L,)
+    agent_actions = logs['Agent Action'].values  # shape (L,)
+    
+    # Step 1: Separate accepted and rejected logs
+    accept_mask = agent_actions == 1
+    reject_mask = agent_actions == -1
+
+    W_accept = contracts[accept_mask]  # shape (L_accept, m)
+    U_accept_prin = principal_util[accept_mask]  # shape (L_accept,)
+    W_reject = contracts[reject_mask]  # shape (L_reject, m)
+
+    # Step 2: From accepted contracts, infer expected agent outcome distributions p_i
+    # Solve for p_i: max p_i @ w_i - c_i ≥ 0 so p_i @ w_i ≥ c_i
+    # Principal utility = v @ p_i - payment @ p_i = v @ p_i - w_i @ p_i = known U_i
+    # => payment @ p_i = w_i @ p_i = v @ p_i - U_i
+    # But w_i @ p_i is unknown, we can infer p_i via LP:
+    # We want p_i s.t. sum p_i=1, p_i ≥0, and w_i @ p_i = ? (not enforced here)
+    # Instead, fit p_i so that principal utility matches: U_i = v @ p_i - w_i @ p_i
+    # => w_i @ p_i = v @ p_i - U_i
+
+    # We try to find p_i that maximizes agent utility (p_i @ w_i - cost_i ≥ 0).
+    # Since cost unknown, heuristically we find p_i close to v to maximize principal utility
+
+    # We approximate p_i by solving:
+    # maximize p @ (v - w_i) subject to p ≥ 0, sum p=1
+    # But w_i unknown to us in this step, so approximate by solving:
+    # min ||w_i @ p - (v @ p - U_i)|| under simplex constraints
+
+    # Instead, use least squares to find p_i by fitting:
+    # v @ p_i - w_i @ p_i = U_i
+    # => (v - w_i) @ p_i = U_i
+
+    # To get consistent p_i, solve min ||(v - w_i) p_i - U_i|| with p_i in simplex
+
+    candidate_p = []
+    for i, (w, U) in enumerate(zip(W_accept, U_accept_prin)):
+        c_vec = v - w  # shape (m,)
+        # Solve min ||c_vec @ p - U|| subject to p ∈ simplex
+        # Set it as linear equality constraint: c_vec @ p = U, sum p=1, p≥0
+
+        # Setup constraints for linprog
+        # To find feasible p: sum p=1, c_vec @ p = U, p≥0
+        # This is a feasibility problem, use linprog to find feasible p
+
+        A_eq = np.vstack([np.ones(m), c_vec])
+        b_eq = np.array([1.0, U])
+
+        # Objective arbitrary (zero), just find feasible point
+        res = linprog(np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=[(0,1)]*m, method='highs')
+        if res.success:
+            candidate_p.append(res.x)
+        else:
+            # If infeasible, fallback to uniform distribution
+            candidate_p.append(np.ones(m)/m)
+    candidate_p = np.array(candidate_p)  # shape (L_accept, m)
+
+    # Step 3: Cluster candidate_p into coherent agent actions
+    # Use DBSCAN to find density clusters adaptively
+    clustering = DBSCAN(eps=0.15, min_samples=2).fit(candidate_p)
+    labels = clustering.labels_
+    unique_labels = set(labels)
+    if -1 in unique_labels:
+        unique_labels.remove(-1)  # remove noise label
+    n_actions = max(len(unique_labels), 1)
+    # If all noise, fallback to k-means with 3 clusters
+    if n_actions == 0:
+        from sklearn.cluster import KMeans
+        kmeans = KMeans(n_clusters=3, random_state=0).fit(candidate_p)
+        cluster_centers = kmeans.cluster_centers_
+        labels = kmeans.labels_
+        n_actions = 3
+    else:
+        # Compute cluster centers ignoring noise
+        cluster_centers = np.array([candidate_p[labels==lab].mean(axis=0) for lab in unique_labels])
+        # For noise points assign closest cluster center
+        noise_idx = np.where(labels==-1)[0]
+        if noise_idx.size > 0:
+            for ni in noise_idx:
+                dist = np.linalg.norm(cluster_centers - candidate_p[ni], axis=1)
+                labels[ni] = unique_labels[np.argmin(dist)]
+        labels = np.array([list(unique_labels).index(lab) for lab in labels])
+        cluster_centers = cluster_centers  # shape (n_actions, m)
+    
+    # Normalize cluster centers (probabilities)
+    cluster_centers = np.clip(cluster_centers, 0, None)
+    cluster_centers = cluster_centers / cluster_centers.sum(axis=1, keepdims=True)
+
+    # Step 4: Infer costs c_a for each action a
+    # For each action a, collected accepted contracts assigned to it:
+    # IR: max_{accepted contracts assigned to a} [p_a @ w_i - c_a] >= 0 => c_a ≤ min_i p_a @ w_i
+    # IC: For all contracts, agent prefers assigned action:
+    # For accepted contracts assigned to a:
+    # p_a @ w_i - c_a ≥ p_b @ w_i - c_b for all b ≠ a
+    # For rejected contracts:
+    # max_a (p_a @ w_j - c_a) < 0
+
+    # Setup variables: costs vector c in R^{n_actions}, c ≥ 0
+
+    # Build constraints inequalities: A_ub c ≤ b_ub
+
+    # IR constraints (upper bounds on c_a)
+    # c_a ≤ min_i p_a @ w_i for all accepted contracts assigned to a
+    c_upper_bounds = np.full(n_actions, np.inf)
+    for a in range(n_actions):
+        idx_a = np.where(labels == a)[0]
+        if len(idx_a) > 0:
+            vals = cluster_centers[a] @ W_accept[idx_a].T  # shape (len(idx_a),)
+            c_upper_bounds[a] = min(vals.min(), c_upper_bounds[a])
+        else:
+            c_upper_bounds[a] = 1e6  # large number if no assigned contracts
+
+    # IC constraints (for accepted contracts):
+    # For each accepted contract i with assigned action a:
+    # p_a @ w_i - c_a ≥ p_b @ w_i - c_b  for all b ≠ a
+    # => (c_b - c_a) ≤ (p_a - p_b) @ w_i
+    # For each i and each b ≠ a, one inequality
+
+    ic_rows = []
+    ic_rhs = []
+    for i, a in enumerate(labels):
+        w_i = W_accept[i]
+        p_a = cluster_centers[a]
+        for b in range(n_actions):
+            if b == a:
+                continue
+            p_b = cluster_centers[b]
+            diff = (p_a - p_b) @ w_i
+            row = np.zeros(n_actions)
+            row[b] = 1
+            row[a] = -1
+            ic_rows.append(row)
+            ic_rhs.append(diff)
+
+    # Rejection constraints:
+    # For each rejected contract j:
+    # max_a (p_a @ w_j - c_a) < 0
+    # => For all a: p_a @ w_j - c_a < 0
+    # => c_a > p_a @ w_j for all a
+    # We use c_a ≥ p_a @ w_j + ε, ε>0 small margin to separate rejection
+
+    eps = 1e-4
+    rej_rows = []
+    rej_rhs = []
+    for w_j in W_reject:
+        for a in range(n_actions):
+            p_a = cluster_centers[a]
+            val = p_a @ w_j + eps
+            row = np.zeros(n_actions)
+            row[a] = -1
+            rej_rows.append(row)
+            rej_rhs.append(-val)
+
+    # Combine inequalities:
+    # A_ub @ c ≤ b_ub
+    A_ub = np.vstack([ic_rows, rej_rows]) if ic_rows or rej_rows else np.zeros((0,n_actions))
+    b_ub = np.array(ic_rhs + rej_rhs) if ic_rows or rej_rows else np.array([])
+
+    # Bounds on c_a: 0 ≤ c_a ≤ c_upper_bounds[a]
+    bounds = [(0, ub if np.isfinite(ub) else None) for ub in c_upper_bounds]
+
+    # Objective: minimize sum c_a (arbitrary to find feasible small costs)
+    c_obj = np.ones(n_actions)
+
+    res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+
+    if not res.success:
+        # fallback: clip costs to max(0,min p_a @ w_i)
+        c_final = np.clip(c_upper_bounds, 0, None)
+    else:
+        c_final = res.x
+
+    # Final: Compose agent setting matrix (n_actions x (m+1))
+    agent_setting = np.hstack([cluster_centers, c_final.reshape(-1,1)])
+
+    return agent_setting
+```

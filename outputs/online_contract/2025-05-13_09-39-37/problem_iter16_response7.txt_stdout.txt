@@ -1,0 +1,53 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:46: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}. These will be passed to HiGHS verbatim.
+  p = res.x
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 4.378589802272126
+→ Inferred agent&principal utility:    -0.31854311490538434 4.356278861371764
+→ Agent and principal score:    100 -0.31854312490538383
+[*] Instance 0: 99.68145687509461
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:46: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}. These will be passed to HiGHS verbatim.
+  p = res.x
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 5.234574622058661
+→ Inferred agent&principal utility:    0.1614670156487208 0.5198558941336899
+→ Agent and principal score:    0.1614670156487208 1.7801057056130456
+[*] Instance 1: 1.9415727212617664
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:46: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}. These will be passed to HiGHS verbatim.
+  p = res.x
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 3.9779229694465923
+→ Inferred agent&principal utility:    0.09374785410084918 1.273650340688553
+→ Agent and principal score:    0.09374785410084918 2.2946023876905324
+[*] Instance 2: 2.3883502417913816
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:46: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}. These will be passed to HiGHS verbatim.
+  p = res.x
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 4.548669054856502
+→ Inferred agent&principal utility:    -0.12695715203199853 4.290089469632002
+→ Agent and principal score:    100 -0.12695716203199936
+[*] Instance 3: 99.873042837968
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_05.pkl with 5 instances.
+→ Best principal utility: 3.4351046687638447
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:46: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}. These will be passed to HiGHS verbatim.
+  p = res.x
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-11}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 4.126179280215192
+→ Inferred agent&principal utility:    1.2417983806799366 2.088920645483056
+→ Agent and principal score:    1.2417983806799366 1.346184023280789
+[*] Instance 4: 2.5879824039607255
+[*] Average:
+41.2944810160153

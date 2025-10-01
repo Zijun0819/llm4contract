@@ -1,0 +1,7 @@
+Below is your prior long-term reflection on designing agent setting solver for {problem_desc}
+{prior_reflection}
+
+Below are some newly gained insights.
+{new_reflection}
+
+Write constructive hints for inferring better agent settings, based on prior reflections and new insights, and using less than 50 words.

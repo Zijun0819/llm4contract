@@ -1,0 +1,187 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, lsq_linear
+from sklearn.cluster import KMeans
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer an agent setting matrix given principal reward vector v and historical interaction logs content.
+    The inference:
+    - Find a minimal set of agent actions (distributions over outcomes + costs) that rationalize accept/reject logs.
+    - Leverage clustering and constrained optimization for IR and IC constraints simultaneously.
+
+    Parameters:
+    - v: np.ndarray, shape (5,), principal reward vector per outcome.
+    - content: list of dicts with keys 'Contract', 'Principal Utility', 'Agent Action'.
+
+    Returns:
+    - agent_setting: np.ndarray, shape (n_actions, 6), each row [p1, p2, p3, p4, p5, cost].
+    """
+
+    contracts = np.array([log['Contract'] for log in content])  # L x 5
+    agent_actions = np.array([log['Agent Action'] for log in content])  # L,
+    principal_utils = np.array([log['Principal Utility'] for log in content])  # L,
+
+    L = len(content)
+    m = v.size
+
+    # 1. Determine upper bound for number of agent actions by number of distinct accepted contracts (capped)
+    accepted_indices = np.where(agent_actions == 1)[0]
+    rejected_indices = np.where(agent_actions == -1)[0]
+
+    accepted_contracts = contracts[accepted_indices]
+
+    max_candidates = min(8, len(accepted_indices))  # heuristic cap on number of clusters
+
+    # 2. Cluster accepted contracts to candidates (these represent action outcome distributions roughly)
+    # Since contracts = wages, where expectation p @ w - cost >= 0,
+    # p unknown, but wages vary; p clusters imply consistent explanation of assigned contracts.
+
+    # To form a proxy for p, note that accepting means agent utility = p@w - c >=0.
+    # For fixed c unknown, p@w close to some baseline utility >= 0.
+    # Use accepted contracts weighted by v to form a proxy: contracts @ v approximates p utility under outcomes.
+
+    # Cluster accepted contracts by their shape to infer prototypical w's agent responds to
+    kmeans = KMeans(n_clusters=max_candidates, random_state=42, n_init=15).fit(accepted_contracts)
+
+    # Candidate action wages clusters' centroids (not p but helps cluster contracts)
+    w_centroids = kmeans.cluster_centers_
+
+    # 3. Initialize probabilities p and costs c for each candidate action
+    # To infer p (probability vector), solve LP:
+    # For accepted contracts i assigned to cluster a, want to find p_a s.t
+    # average agent utilities p_a @ w_i - c_a >= 0
+    # and that p_a is a probability distribution on outcomes (nonnegative entries summing 1)
+    # c_a minimal nonnegative scalar
+
+    # For rejection consistency: ensure for every rejected contract w_r: max_a (p_a @ w_r - c_a) < 0
+
+    n = max_candidates
+
+    # Assign accepted contracts to clusters
+    assigns = kmeans.labels_  # length == len(accepted_indices), assigns accepted contracts to actions
+
+    # Prepare variables:
+    # p matrix: n x m (prob dist per action)
+    # c vector: n (cost per action)
+    # Variables combined into x: shape (n*(m+1),)
+
+    # LP formulation (via least squares + linear constraints):
+    # For accepted i assigned to a:
+    # p_a @ w_i - c_a >= 0 (agent accepts)
+    # For rejected contracts j:
+    # max_a (p_a @ w_j - c_a) < 0 --> for all a: p_a @ w_j - c_a <= -epsilon with small epsilon>0
+
+    epsilon = 1e-4
+
+    # Flatten variables vector: first all p's then all c's for easier indexing
+    # x = [p_0_0,...p_0_m-1, ..., p_n-1_0,...p_n-1_m-1, c_0,...,c_n-1]
+
+    def idx_p(a, outcome):
+        return a * m + outcome
+
+    def idx_c(a):
+        return n * m + a
+
+    # Prepare constraint matrices for inequalities:
+
+    # Constraints for accepted logs: p_a @ w_i - c_a >= 0
+    # ==> -p_a @ w_i + c_a <= 0 (to match A_ub x <= b_ub)
+    # We'll build for each accepted contract i, one constraint for its assigned action a
+
+    A_ub = []
+    b_ub = []
+
+    for idx_i, a in enumerate(assigns):
+        i = accepted_indices[idx_i]
+        w = contracts[i]
+        row = np.zeros(n * m + n)
+        for o in range(m):
+            row[idx_p(a, o)] = -w[o]
+        row[idx_c(a)] = 1.0
+        A_ub.append(row)
+        b_ub.append(0.0)
+
+    # Constraints for rejected logs: p_a @ w_j - c_a <= -epsilon forall a, for each rejected j
+    for j in rejected_indices:  # loop over rejected contracts
+        w = contracts[j]
+        for a in range(n):
+            row = np.zeros(n * m + n)
+            for o in range(m):
+                row[idx_p(a, o)] = w[o]
+            row[idx_c(a)] = -1.0
+            A_ub.append(row)
+            b_ub.append(-epsilon)
+
+    A_ub = np.array(A_ub)
+    b_ub = np.array(b_ub)
+
+    # Equality constraints:
+    # For each action a: sum_o p_a[o] == 1
+    A_eq = np.zeros((n, n * m + n))
+    b_eq = np.ones(n)
+    for a in range(n):
+        for o in range(m):
+            A_eq[a, idx_p(a, o)] = 1.0
+
+    # Bounds:
+    # - p_a[o] in [0,1]
+    # - c_a >= 0
+    bounds = [(0, 1)] * (n * m) + [(0, None)] * n
+
+    # Objective:
+    # minimize sum of costs (to find minimal costs) + add L2 penalty to encourage diverse p's low overfitting
+    # Since linprog can't handle quadratic obj, just minimize sum of c
+    c_obj = np.zeros(n * m + n)
+    c_obj[n*m:] = 1.0  # minimize total cost sum
+
+    # Solve LP with scipy linprog, method='highs' can handle large constraints, but no quadratic obj.
+    res = linprog(
+        c=c_obj,
+        A_ub=A_ub,
+        b_ub=b_ub,
+        A_eq=A_eq,
+        b_eq=b_eq,
+        bounds=bounds,
+        method='highs',
+    )
+
+    if not res.success:
+        # fallback naive: uniform distributions and zero cost for accepted clusters,
+        # negative cost to reject edges will fail, so reduce n and try again:
+        # we return at least one valid uniform with zero cost to explain accept logs
+        p_uniform = np.ones(m) / m
+        agg_agent_setting = []
+        for _ in range(min(3, n)):
+            agg_agent_setting.append(np.append(p_uniform, 0.0))
+        agent_setting = np.vstack(agg_agent_setting)
+        return agent_setting
+
+    x = res.x
+
+    # Extract p and c from solution
+    p_mat = x[: n * m].reshape(n, m)
+    c_vec = x[n * m: n * m + n]
+
+    # Project p vectors to simplex if minor numerical issues
+    def project_simplex(vec):
+        """Simplex projection (nonnegative, sum=1) via sorting algorithm."""
+        z = np.sort(vec)[::-1]
+        cumsum = np.cumsum(z)
+        rho = np.where(z + (1.0 - cumsum) / (np.arange(len(vec)) + 1) > 0)[0]
+        if len(rho) == 0:
+            return np.ones_like(vec) / len(vec)
+        rho = rho[-1]
+        theta = (cumsum[rho] - 1) / (rho + 1)
+        return np.maximum(vec - theta, 0.0)
+
+    for i in range(n):
+        p_mat[i] = project_simplex(p_mat[i])
+        if c_vec[i] < 0:
+            c_vec[i] = 0.0
+
+    agent_setting = np.hstack([p_mat, c_vec[:, None]])
+    return agent_setting
+```

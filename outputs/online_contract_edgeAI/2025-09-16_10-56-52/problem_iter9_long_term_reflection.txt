@@ -1,0 +1,1 @@
+Optimize cost bounds from both accepted and rejected contracts. Use KDE for smoother clusters and SLSQP to enforce IC/IR. Minimize penalties iteratively, validate utility thresholds dynamically, and refine with weighted action clustering for precise, constraint-satisfying results.

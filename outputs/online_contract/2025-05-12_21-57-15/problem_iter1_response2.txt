@@ -1,0 +1,151 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Inference of an agent setting compatible with all observed contracts and outcomes,
+    satisfying IR and IC constraints given historical logs:
+    - each action corresponds to an outcome distribution (sum=1) over 5 outcomes and cost >=0.
+    - accepted contracts mean expected utility (p@w - c) >=0
+    - rejected contracts mean no action p with p@w - c >=0 exists
+
+    Method:
+    - Extract contracts and agent responses
+    - For accepted logs, infer feasible (p,c) with p@w - c >=0
+    - Cluster accepted inferred p's to obtain representative actions
+    - Solve LP to find minimal costs c of each action satisfying IR and IC constraints imposed by all logs
+    """
+
+    # Extract info
+    contracts = np.vstack(content['Contract'].values)  # shape (L,5)
+    agent_actions = content['Agent Action'].values     # length L
+    n_logs = len(content)
+    m = v.size  # 5 outcomes
+
+    # 1) Infer candidate action outcome distributions 'p' from acceptance logs
+    # We try for each accepted log to find a feasible p s.t. sum=1, p*w - c¡Ý0,
+    # but c unknown, so set c=0 as minimal threshold to find consistent p with contract utility >=0.
+    
+    accept_idx = np.where(agent_actions == 1)[0]
+    reject_idx = np.where(agent_actions == -1)[0]
+    accept_contracts = contracts[accept_idx]
+
+    candidate_ps = []
+    # For each accepted contract w, we want a probabilistic vector p s.t p*w - c >=0,
+    # c unknown. Since c¡Ý0, at least p*w¡Ý0.
+    # Simplify: pick p that maximizes margin p@w (prefer high probability on max wages).
+    for w in accept_contracts:
+        # Find p solving max p @ w s.t sum p=1, p¡Ý0 => max p@w= max w_i
+        # But want p in interior; try find distribution giving positive utility
+        # Or find basic max with LP with min variance to avoid degenerate.
+        # Here just take p as one-hot on argmax w.
+        p = np.zeros(m)
+        p[np.argmax(w)] = 1.
+        candidate_ps.append(p)
+    candidate_ps = np.array(candidate_ps)
+    if len(candidate_ps) == 0:
+        # fallback cluster uniform distributions
+        candidate_ps = np.tile(np.ones(m)/m, (1,1))
+
+    # 2) Cluster candidate_ps to get a manageable number of actions
+    # Use Agglomerative Clustering with automatic cluster count up to max 10 or less
+    max_actions = min(10, len(candidate_ps))
+    if max_actions == 0:
+        max_actions = 1
+    clustering = AgglomerativeClustering(n_clusters=max_actions).fit(candidate_ps)
+    labels = clustering.labels_
+    n_actions = np.unique(labels).size
+
+    # Average p vectors in each cluster to get action p
+    action_ps = np.zeros((n_actions, m))
+    for i in range(n_actions):
+        members = candidate_ps[labels == i]
+        # Average and normalize to valid probability vector
+        p_avg = members.mean(axis=0)
+        p_avg = np.clip(p_avg, 0, None)
+        s = p_avg.sum()
+        if s == 0:
+            # fallback uniform if cluster yields zeros
+            p_avg = np.ones(m) / m
+        else:
+            p_avg /= s
+        action_ps[i] = p_avg
+
+    # 3) Calculate minimal costs c for each action via LP from all logs constraints
+    #
+    # Variables: c (costs), shape (n_actions,)
+    # Constraints:
+    # - IR for accepted contracts: for contract w_j with action a assigned: p_a@w_j - c_a >=0
+    # - IC for rejected contracts: for all actions a: p_a@w_j - c_a <0
+    #
+    # Assignment heuristic for accepted logs: assign to action with max p_a@w_j
+
+    # Assign each accepted log to an action with highest expected utility p_a @ w_j
+    assignments = np.full(n_logs, -1, dtype=int)
+    for idx in accept_idx:
+        wj = contracts[idx]
+        util = action_ps @ wj  # vector with length n_actions
+        assignments[idx] = int(np.argmax(util))
+
+    # Build LP to minimize sum of costs (or 0), but we just want feasible c¡Ý0
+    # Form inequalities: for accepted:
+    #   c_a <= p_a@w_j   for each accepted log j assigned to action a
+    # for rejected logs j:
+    #   c_a > p_a@w_j  i.e.  c_a >= p_a@w_j + ¦Å (strict infeasibility)
+    # Approximate strict with small epsilon=1e-6
+
+    # Variables: costs c_a, lower bounds 0
+    c_bounds = [(0, None) for _ in range(n_actions)]
+
+    # Inequalities: A_ub c <= b_ub, but constraints are of form c_a <= p_a@w_j for accepted,
+    # convert to -c_a >= -p_a@w_j => c_a <= p_a@w_j --- okay as A_ub rows with one positive coeff=1 decreasing
+
+    A_ub = []
+    b_ub = []
+
+    # accepted constraints c_a <= p_a@w_j
+    for j in accept_idx:
+        a = assignments[j]
+        wj = contracts[j]
+        rhs = action_ps[a] @ wj
+        row = np.zeros(n_actions)
+        row[a] = 1
+        A_ub.append(row)
+        b_ub.append(rhs)
+
+    # rejected constraints: c_a >= p_a@w_j + eps => -c_a <= -p_a@w_j - eps
+    eps = 1e-6
+    for j in reject_idx:
+        wj = contracts[j]
+        for a in range(n_actions):
+            rhs = (action_ps[a] @ wj) + eps
+            row = np.zeros(n_actions)
+            row[a] = -1
+            A_ub.append(row)
+            b_ub.append(-rhs)
+
+    A_ub = np.array(A_ub)
+    b_ub = np.array(b_ub)
+
+    # Objective: minimize sum costs (can be zeros since feasibility)
+    c_obj = np.ones(n_actions)
+
+    # Solve LP with linprog
+    res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=c_bounds, method='highs')
+    if not res.success:
+        # Fallback: assign cost =0 (may violate rejections) if no feasible solution found
+        costs = np.zeros(n_actions)
+    else:
+        costs = res.x
+        # Enforce small nonnegative costs (to fix numerical small negatives)
+        costs = np.clip(costs, 0., None)
+
+    # 4) Assemble final agent setting matrix n_actions x (5+1)
+    agent_setting = np.hstack([action_ps, costs[:, None]])
+
+    return agent_setting
+```

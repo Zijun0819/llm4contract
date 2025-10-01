@@ -1,0 +1,200 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：1.9755 seconds
+The inferred contract is [[4.49412055e-03 2.62440077e-03 2.00160311e-03 2.74950601e-03
+  3.55156783e-03 1.21948025e-02 1.80365182e-01 6.36870723e-02
+  3.36232348e-02 1.54921424e-02 5.86676038e-01 9.25403304e-02
+  9.09177904e-05]
+ [1.21782563e-02 2.78287590e-03 4.19425487e-03 2.60058045e-03
+  2.33468261e-02 5.53008975e-03 5.02878669e-02 1.15748474e-01
+  1.18534920e-02 1.67666671e-02 9.54506421e-02 6.59259974e-01
+  6.43798444e-05]
+ [1.46406680e-03 2.22901804e-03 2.15595615e-03 2.57393962e-03
+  2.43669653e-02 1.75186140e-02 2.30301835e-03 3.01032930e-02
+  2.73440111e-02 6.52868970e-01 1.13829045e-02 2.25689243e-01
+  9.76568139e+00]
+ [6.60317767e-03 3.40694677e-03 4.60132307e-03 4.12307055e-03
+  5.31822775e-03 5.68957667e-01 3.91193268e-03 2.09004202e-02
+  6.10171789e-03 1.00782242e-02 6.48671411e-03 3.59510579e-01
+  9.76568259e+00]
+ [1.52056949e-02 1.17193844e-03 2.21370301e-03 2.19831075e-03
+  3.07806547e-03 3.94453790e-03 3.80639545e-03 5.75308141e-03
+  5.62976794e-01 1.34777815e-02 1.15280828e-02 3.74645614e-01
+  5.98965581e-05]]
+→ Best principal utility: 0.0006079226522908746
+→ Inferred agent&principal utility:    0.0001997704772011023 0.00021287699989258095
+→ Agent and principal score:    0 0.00040651216502880165
+[*] Instance 0: 0.00040651216502880165
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：1.5500 seconds
+The inferred contract is [[5.86868235e-03 3.19006985e-03 2.03749184e-03 3.80854870e-03
+  3.14009803e-03 7.97343650e-03 1.90945093e-02 8.57717416e-03
+  7.74116326e-01 5.73141879e-03 4.86070426e-03 1.61601540e-01
+  1.95312824e+01]
+ [1.53750269e-03 3.26999632e-01 2.29361851e-03 1.21387859e-02
+  8.28570788e-03 2.57577124e-03 9.50617944e-03 3.35276237e-03
+  2.07296681e-01 4.42782042e-03 4.13031446e-01 8.55409263e-03
+  1.05982782e-04]
+ [1.57233288e-02 1.51244580e-03 1.96573688e-02 2.41649399e-03
+  1.90884042e-03 3.07461498e-03 5.51196927e-03 1.76327506e-02
+  6.47220360e-03 6.84690092e-01 8.90576131e-02 1.52342279e-01
+  6.66355467e-05]
+ [2.16663813e-03 4.38308103e-03 9.19952410e-03 6.43978584e-03
+  4.22904848e-02 4.64438580e-02 4.37862465e-02 6.63018600e-02
+  2.83665248e-02 2.57724425e-02 5.94032249e-02 6.65446329e-01
+  9.76573878e+00]
+ [1.27765854e-02 3.47873589e-03 2.31415384e-02 3.50107770e-03
+  4.35854259e-03 4.19743295e-02 4.78243209e-02 2.84312115e-02
+  4.20122895e-02 1.26101761e-02 6.57441526e-01 1.22449667e-01
+  1.95313395e+01]]
+→ Best principal utility: 0.00057958386588208
+→ Inferred agent&principal utility:    0.00023412661348259705 0.000316618646772861
+→ Agent and principal score:    0 0.00030277051814852154
+[*] Instance 1: 0.00030277051814852154
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：1.4636 seconds
+The inferred contract is [[1.91297539e-03 2.45957882e-03 2.26857477e-03 5.29486345e-02
+  3.05872300e-02 1.34780185e-02 4.20537636e-03 5.53470506e-02
+  1.19110626e-02 7.77309990e-03 6.64351287e-01 1.52757111e-01
+  8.02160458e-05]
+ [3.29666944e-04 2.68371118e-04 6.71790797e-04 3.38142608e-04
+  3.81146079e-04 4.39054688e-01 3.49497979e-03 1.57628753e-03
+  4.35165274e-04 4.60681417e-01 6.23744495e-02 3.03938954e-02
+  2.92969409e+01]
+ [2.16030012e-03 2.37751591e-03 2.72249694e-02 2.38077389e-02
+  2.57582349e-03 2.61659736e-03 1.14434715e-02 4.18158122e-02
+  8.41978988e-03 6.86411177e-01 4.74670263e-02 1.43679778e-01
+  7.81250662e+01]
+ [1.53898212e-02 4.31166188e-03 1.55286428e-02 2.86428705e-03
+  1.00342385e-02 8.57425916e-03 8.99290720e-02 8.64700326e-02
+  3.60632904e-02 5.69239828e-02 3.20002954e-02 6.41910416e-01
+  9.76569967e+00]
+ [4.99282836e-04 5.38818170e-02 1.29921599e-03 1.11401198e-03
+  2.06410180e-03 3.25124904e-03 2.13826593e-02 1.92339366e-03
+  7.29820996e-01 3.80978854e-02 8.34818375e-03 1.38317204e-01
+  3.41797522e+01]]
+→ Best principal utility: 0.0005753478289206285
+→ Inferred agent&principal utility:    2.7024303222603223e-06 0.0006166867345992221
+→ Agent and principal score:    0 2.702430322160435e-06
+[*] Instance 2: 2.702430322160435e-06
+[*] Average:
+0.00023732837116649454

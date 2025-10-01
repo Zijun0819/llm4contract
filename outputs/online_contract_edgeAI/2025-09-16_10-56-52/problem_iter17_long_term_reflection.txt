@@ -1,0 +1,1 @@
+Refine GMM with density weighting from all logs. Initialize costs using utility thresholds, tighten convergence tolerances, and enforce IR/IC via penalty-based SLSQP with adaptive penalty weights. Validate strictly.

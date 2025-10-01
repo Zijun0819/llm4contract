@@ -1,0 +1,247 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions x [probabilities over 5 outcomes + cost])
+    that explains all historical interactions under IR and IC constraints.
+
+    Args:
+        v: np.ndarray of shape (5,), principal's reward vector for 5 outcomes.
+        content: list of dicts, each with keys 'Contract' (list of 5 float payments),
+                 'Principal Utility' (float), and 'Agent Action' (1 or -1).
+
+    Returns:
+        np.ndarray of shape (n_actions, 6), rows are [p1,...,p5,cost]
+    """
+    m = v.shape[0]  # number of outcomes (expected 5)
+    logs_df = pd.DataFrame(content)
+
+    # Separate accepted and rejected logs
+    accept_df = logs_df[logs_df['Agent Action'] == 1]
+    reject_df = logs_df[logs_df['Agent Action'] == -1]
+
+    # If no accepted logs, return trivial uniform distribution with zero cost
+    if len(accept_df) == 0:
+        p_uniform = np.ones(m) / m
+        return np.array([np.append(p_uniform, 0.0)])
+
+    accept_contracts = np.vstack(accept_df['Contract'].to_numpy())
+    accept_putils = accept_df['Principal Utility'].to_numpy()
+    reject_contracts = np.vstack(reject_df['Contract'].to_numpy()) if len(reject_df) > 0 else np.empty((0, m))
+
+    # Step 1: Infer plausible outcome distributions p for accepted contracts
+    # Solve LP per accepted contract:
+    #   sum p = 1
+    #   p @ (v - w) = principal utility
+    #   0 <= p <= 1
+    # Add small tolerance margin for numerical stability
+
+    def solve_p_for_accept(w: np.ndarray, pu: float) -> np.ndarray:
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, pu])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c=np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p = res.x
+            p = np.clip(p, 0, None)
+            s = p.sum()
+            if s > 0:
+                p /= s
+            else:
+                p = np.ones(m) / m
+            return p
+        else:
+            # fallback uniform distribution if infeasible
+            return np.ones(m) / m
+
+    candidate_ps_accept = np.array([solve_p_for_accept(w, pu) for w, pu in zip(accept_contracts, accept_putils)])
+
+    # Step 2: Cluster accepted candidate_ps to find representative actions
+    max_clusters = min(10, len(candidate_ps_accept))
+    if max_clusters == 1:
+        n_actions_accept = 1
+        p_centers_accept = candidate_ps_accept.mean(axis=0, keepdims=True)
+        accept_assign = np.zeros(len(candidate_ps_accept), dtype=int)
+    else:
+        inertias = []
+        km_models = []
+        for k in range(1, max_clusters + 1):
+            kmeans = KMeans(n_clusters=k, random_state=0, n_init=20).fit(candidate_ps_accept)
+            inertias.append(kmeans.inertia_)
+            km_models.append(kmeans)
+        inertias = np.array(inertias)
+        deltas = -np.diff(inertias)  # positive reductions
+        if len(deltas) >= 2:
+            ratios = deltas[1:] / (deltas[:-1] + 1e-12)
+            elbow_candidates = np.where(ratios < 0.5)[0] + 2  # +2 because ratios index starts at 2 clusters
+            n_actions_accept = elbow_candidates[0] if len(elbow_candidates) > 0 else max_clusters
+        elif len(deltas) == 1:
+            n_actions_accept = 1 if deltas[0] < 1e-3 else 2
+        else:
+            n_actions_accept = 1
+        kmeans = km_models[n_actions_accept - 1]
+        p_centers_accept = kmeans.cluster_centers_
+        accept_assign = kmeans.predict(candidate_ps_accept)
+
+    # Step 3: Infer plausible outcome distributions p for rejected contracts
+    # For each rejected contract w_r, find p_r that satisfies:
+    #   sum p_r = 1
+    #   p_r @ (v - w_r) < 0 (agent utility < 0)
+    #   0 <= p_r <= 1
+    # We relax strict inequality to p_r @ (v - w_r) <= -tol to allow numerical slack
+    # If infeasible, fallback to uniform distribution
+
+    tol_reject = 1e-6
+    candidate_ps_reject = []
+    for w in reject_contracts:
+        A_eq = np.ones((1, m))
+        b_eq = np.array([1.0])
+        bounds = [(0, 1) for _ in range(m)]
+        # Inequality: p @ (v - w) <= -tol_reject
+        A_ub = np.array([v - w])
+        b_ub = np.array([-tol_reject])
+        res = linprog(c=np.zeros(m), A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+        if res.success:
+            p = res.x
+            p = np.clip(p, 0, None)
+            s = p.sum()
+            if s > 0:
+                p /= s
+            else:
+                p = np.ones(m) / m
+            candidate_ps_reject.append(p)
+        else:
+            # fallback uniform distribution if infeasible
+            candidate_ps_reject.append(np.ones(m) / m)
+    candidate_ps_reject = np.array(candidate_ps_reject) if len(candidate_ps_reject) > 0 else np.empty((0, m))
+
+    # Step 4: Combine accepted and rejected candidate_ps for joint clustering
+    # Label accepted points as 1, rejected as 0; use weighted clustering to emphasize accepted
+    combined_ps = np.vstack([candidate_ps_accept, candidate_ps_reject]) if candidate_ps_reject.shape[0] > 0 else candidate_ps_accept.copy()
+    n_accept = candidate_ps_accept.shape[0]
+    n_reject = candidate_ps_reject.shape[0]
+
+    # Weights: accepted points weighted by |principal utility| (importance), rejected points weighted lower
+    accept_weights = np.abs(accept_putils)
+    if accept_weights.sum() > 0:
+        accept_weights /= accept_weights.sum()
+    else:
+        accept_weights = np.ones(n_accept) / n_accept
+    reject_weights = np.ones(n_reject) / n_reject if n_reject > 0 else np.array([])
+
+    # Combine weights, scale rejected weights smaller to emphasize accepted points
+    weight_scale_reject = 0.1  # reduce influence of rejected points in clustering
+    combined_weights = np.concatenate([accept_weights, reject_weights * weight_scale_reject]) if n_reject > 0 else accept_weights
+
+    max_clusters_combined = min(10, len(combined_ps))
+    if max_clusters_combined == 1:
+        n_actions = 1
+        p_centers = combined_ps.mean(axis=0, keepdims=True)
+        combined_assign = np.zeros(len(combined_ps), dtype=int)
+    else:
+        # Weighted KMeans approximation by replicating points proportional to weights (rounded)
+        replicate_counts = np.maximum(1, (combined_weights * 1000).astype(int))
+        expanded_points = np.repeat(combined_ps, replicate_counts, axis=0)
+
+        inertias = []
+        km_models = []
+        for k in range(1, max_clusters_combined + 1):
+            kmeans = KMeans(n_clusters=k, random_state=0, n_init=20).fit(expanded_points)
+            inertias.append(kmeans.inertia_)
+            km_models.append(kmeans)
+        inertias = np.array(inertias)
+        deltas = -np.diff(inertias)
+        if len(deltas) >= 2:
+            ratios = deltas[1:] / (deltas[:-1] + 1e-12)
+            elbow_candidates = np.where(ratios < 0.5)[0] + 2
+            n_actions = elbow_candidates[0] if len(elbow_candidates) > 0 else max_clusters_combined
+        elif len(deltas) == 1:
+            n_actions = 1 if deltas[0] < 1e-3 else 2
+        else:
+            n_actions = 1
+        kmeans = km_models[n_actions - 1]
+        p_centers = kmeans.cluster_centers_
+        combined_assign = kmeans.predict(combined_ps)
+
+    # Step 5: Assign accepted and rejected points to clusters
+    accept_assign = combined_assign[:n_accept]
+    reject_assign = combined_assign[n_accept:] if n_reject > 0 else np.array([], dtype=int)
+
+    # Step 6: Compute costs from IR constraints (accepted contracts)
+    # cost_a <= min_i (p_a @ w_i) for accepted contracts i assigned to a
+    # cost_a >= 0
+    ir_margin = 1e-8
+    costs = np.zeros(n_actions)
+    for a in range(n_actions):
+        idxs_accept = np.where(accept_assign == a)[0]
+        if len(idxs_accept) == 0:
+            costs[a] = 0.0
+            continue
+        p_a = p_centers[a]
+        payoffs = accept_contracts[idxs_accept] @ p_a
+        costs[a] = max(0.0, np.min(payoffs) - ir_margin)
+
+    # Step 7: Enforce IC constraints from rejected contracts:
+    # For rejected contracts r and action a:
+    #   agent utility < 0 => p_a @ w_r - cost_a < 0 => cost_a > p_a @ w_r
+    # So cost_a > max_r p_a @ w_r over all rejected contracts assigned to a
+    if n_reject > 0:
+        rej_utils = reject_contracts @ p_centers.T  # (#rej, n_actions)
+        # For each action, consider only rejected contracts assigned to it
+        for a in range(n_actions):
+            idxs_reject = np.where(reject_assign == a)[0]
+            if len(idxs_reject) == 0:
+                continue
+            max_rej_util = np.max(rej_utils[idxs_reject, a])
+            margin = max(1e-7, 1e-4 * max(1.0, max_rej_util))
+            costs[a] = max(costs[a], max_rej_util + margin)
+
+    # Numerical safety: ensure costs non-negative
+    costs = np.maximum(costs, 0.0)
+
+    # Step 8: Normalize p_centers rows to sum to 1 (numerical safety)
+    p_centers = np.clip(p_centers, 0, None)
+    row_sums = p_centers.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    p_centers /= row_sums
+
+    # Step 9: Final IR and IC checks with small adjustments if violated (tighten margins)
+    for a in range(n_actions):
+        idxs_accept = np.where(accept_assign == a)[0]
+        if len(idxs_accept) > 0:
+            p_a = p_centers[a]
+            payoffs = accept_contracts[idxs_accept] @ p_a
+            min_agent_util = np.min(payoffs - costs[a])
+            if min_agent_util < -1e-8:
+                costs[a] = max(0.0, costs[a] + min_agent_util - 1e-8)
+    if n_reject > 0:
+        rej_utils = reject_contracts @ p_centers.T
+        for a in range(n_actions):
+            idxs_reject = np.where(reject_assign == a)[0]
+            if len(idxs_reject) == 0:
+                continue
+            max_util = np.max(rej_utils[idxs_reject, a] - costs[a])
+            if max_util >= -1e-8:
+                costs[a] = max(costs[a], np.max(rej_utils[idxs_reject, a]) + 1e-6)
+
+    # Step 10: Remove empty clusters robustly (clusters with no assigned accepted or rejected points)
+    assigned_clusters = set(np.unique(accept_assign)) | set(np.unique(reject_assign))
+    if len(assigned_clusters) < n_actions:
+        assigned_clusters = sorted(assigned_clusters)
+        p_centers = p_centers[assigned_clusters]
+        costs = costs[assigned_clusters]
+        # Re-map accept_assign and reject_assign
+        cluster_map = {old: new for new, old in enumerate(assigned_clusters)}
+        accept_assign = np.array([cluster_map[a] for a in accept_assign])
+        reject_assign = np.array([cluster_map[r] for r in reject_assign]) if n_reject > 0 else np.array([], dtype=int)
+        n_actions = len(assigned_clusters)
+
+    # Step 11: Assemble agent setting matrix: [p1,...,p5, cost]
+    agent_setting = np.hstack([p_centers, costs.reshape(-1, 1)])
+
+    return agent_setting
+```

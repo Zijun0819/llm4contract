@@ -1,0 +1,81 @@
+```python
+import numpy as np
+from sklearn.cluster import AgglomerativeClustering
+from scipy.optimize import minimize
+from scipy.spatial.distance import cdist
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    accepted_contracts = []
+    accepted_utilities = []
+    rejected_contracts = []
+    
+    for log in content:
+        contract = np.array(log['Contract'])
+        if log['Agent Action'] == 1:
+            accepted_contracts.append(contract)
+            accepted_utilities.append(log['Principal Utility'])
+        else:
+            rejected_contracts.append(contract)
+    
+    if not accepted_contracts:
+        p0 = np.random.dirichlet(np.ones(len(v)), size=3)
+        c0 = np.zeros(3)
+        return np.hstack([p0, c0[:, np.newaxis]])
+    
+    X = np.vstack(accepted_contracts)
+    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=0.01, metric='euclidean').fit(X)
+    n_clusters = max(clustering.n_clusters_, 3)
+    labels = clustering.labels_
+    unique_labels = np.unique(labels)
+    
+    p0 = np.array([X[labels == lbl].mean(axis=0) for lbl in unique_labels])
+    if len(p0) < n_clusters:
+        extra = np.random.dirichlet(np.ones(len(v)), size=n_clusters - len(p0))
+        p0 = np.vstack([p0, extra])
+    
+    def refine_center(center, contracts, utilities):
+        def objective(p):
+            return np.linalg.norm(p - center)
+        constraints = [{'type': 'eq', 'fun': lambda p: np.sum(p) - 1}]
+        for w, u in zip(contracts, utilities):
+            constraints.append({'type': 'ineq', 'fun': lambda p, w=w, u=u: np.dot(p, v - w) - u})
+        bounds = [(0, 1)] * len(v)
+        res = minimize(objective, center, method='SLSQP', bounds=bounds, constraints=constraints)
+        return res.x if res.success else center
+    
+    refined_centers = []
+    for i, center in enumerate(p0):
+        idxs = np.where(labels == i)[0] if i < len(unique_labels) else []
+        contracts_sub = [accepted_contracts[j] for j in idxs] if idxs.size > 0 else []
+        utilities_sub = [accepted_utilities[j] for j in idxs] if idxs.size > 0 else []
+        refined = refine_center(center, contracts_sub, utilities_sub)
+        refined_centers.append(refined)
+    
+    p0_refined = np.vstack(refined_centers)
+    
+    action_assignments = []
+    for log in content:
+        w = np.array(log['Contract'])
+        utils = p0_refined @ w
+        action_assignments.append(np.argmax(utils))
+    
+    action_assignments = np.array(action_assignments)
+    costs = np.zeros(len(p0_refined))
+    
+    for a in range(len(p0_refined)):
+        indices = np.where(action_assignments == a)[0]
+        if indices.size > 0:
+            wages = np.array([content[i]['Contract'] for i in indices])
+            earnings = p0_refined[a] @ wages.T
+            costs[a] = np.min(earnings)
+        else:
+            costs[a] = 0.0
+    
+    if rejected_contracts:
+        rej_wages = np.array(rejected_contracts).T
+        rej_earnings = p0_refined @ rej_wages
+        max_rej_earnings = np.max(rej_earnings, axis=1)
+        costs = np.maximum(costs, max_rej_earnings)
+    
+    return np.hstack([p0_refined, costs[:, np.newaxis]])
+```

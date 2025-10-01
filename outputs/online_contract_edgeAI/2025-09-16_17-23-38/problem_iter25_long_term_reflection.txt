@@ -1,0 +1,1 @@
+Use ultra-tight slack (1e-15), increase KMeans `n_init` to 300, apply PCA with sufficient data, enforce strictly positive wage-aligned costs, and refine action assignment via utility thresholds. Normalize probabilities tightly and leverage rejections to strengthen IC feasibility.

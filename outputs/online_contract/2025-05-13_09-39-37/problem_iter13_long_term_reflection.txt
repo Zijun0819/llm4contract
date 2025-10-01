@@ -1,0 +1,1 @@
+Tighten LP tolerances and IR/IC constraints; use adaptive, finer clustering eps with silhouette validation; increase minimal cluster size and iteration count; assign noise by similarity; refine costs in smaller increments; normalize probabilities strictly; balance clustering sensitivity for robust, stable agent inference.

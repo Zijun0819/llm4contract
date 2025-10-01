@@ -1,0 +1,43 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 2.0976818358594924
+→ Inferred agent&principal utility:    2.262111445671425 0.800936872663508
+→ Agent and principal score:    2.262111445671425 3.236798863802872
+[*] Instance 0: 5.498910309474297
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 2.5666088122742523
+→ Inferred agent&principal utility:    -0.7272424520955865 1.583931045220861
+→ Agent and principal score:    100 0.7160305545258745
+[*] Instance 1: 100.71603055452587
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 2.2692663858124753
+→ Inferred agent&principal utility:    -0.5048318411971882 3.47777844458537
+→ Agent and principal score:    100 0.09047428379371558
+[*] Instance 2: 100.09047428379371
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 2.4999143973212314
+→ Inferred agent&principal utility:    -0.2942041365337127 2.075949061067529
+→ Agent and principal score:    100 2.0871832465324736
+[*] Instance 3: 102.08718324653248
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_05.pkl with 5 instances.
+→ Best principal utility: 3.4351046687638447
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 3.4871468301166657
+→ Inferred agent&principal utility:    -0.41214579264455575 1.7270166882777431
+→ Agent and principal score:    100 1.7080879804861016
+[*] Instance 4: 101.7080879804861
+[*] Average:
+82.02013727496248

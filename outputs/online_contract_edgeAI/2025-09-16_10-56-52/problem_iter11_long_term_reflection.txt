@@ -1,0 +1,1 @@
+Refine GMM clustering with more components. Tighten IR/IC using SLSQP penalties. Jointly optimize action probabilities and costs. Use weighted clustering for reject logs. Validate utility thresholds iteratively. Enforce strict constraint tolerances.

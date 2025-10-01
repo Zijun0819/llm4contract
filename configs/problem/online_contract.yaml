@@ -1,0 +1,11 @@
+problem_name: online_contract
+obj_type: min
+func_name: agent_solver
+description: Inferring a valid agent setting via "agent_solver" that satisfies all historical interaction logs between the principal and agent regarding an online contract design problem.
+n_actions: 100
+n_actions_l: [10, 100, 1000]
+m_outcomes: 5
+m_outcomes_l: [2, 3, 4, 5, 10, 20]
+alpha_p: 0.7
+beta_p: 0.3
+num_contracts: 100

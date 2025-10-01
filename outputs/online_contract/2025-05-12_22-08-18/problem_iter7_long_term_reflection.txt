@@ -1,0 +1,1 @@
+Enforce strict global IR/IC constraints via LP combining inequalities; adaptively cluster with weighted centroids emphasizing principal utility; add minimal dummy actions only for unexplained contracts; refine costs iteratively using rejection slacks; normalize probabilities precisely; fallback to empirical distributions if infeasible.

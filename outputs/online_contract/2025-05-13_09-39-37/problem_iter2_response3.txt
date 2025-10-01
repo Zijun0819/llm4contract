@@ -1,0 +1,152 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting (probability distributions over 5 outcomes + cost)
+    consistent with historical interaction logs between the principal and agent.
+
+    Args:
+        v (np.ndarray): Principal's reward vector for 5 outcomes, shape (5,)
+        content (list[dict]): Each dict contains:
+            - 'Contract': 5-dim payment vector,
+            - 'Principal Utility': principal utility under contract,
+            - 'Agent Action': 1 for accept, -1 for reject.
+
+    Returns:
+        np.ndarray: n x 6 matrix: first 5 columns are outcome probabilities (sum=1),
+                    last column is agent cost (≥0).
+    """
+    m = v.shape[0]
+    logs_df = pd.DataFrame(content)
+    accepted = logs_df[logs_df['Agent Action'] == 1].reset_index(drop=True)
+    rejected = logs_df[logs_df['Agent Action'] == -1].reset_index(drop=True)
+
+    # Handle no accepted contracts: trivial agent with uniform distribution and zero cost
+    if accepted.empty:
+        uniform_p = np.ones(m) / m
+        return np.hstack([uniform_p.reshape(1, -1), np.zeros((1, 1))])
+
+    # Step 1: Infer outcome distributions p for accepted logs by solving LPs:
+    # Constraints:
+    #   sum p = 1
+    #   p @ (v - w) = principal utility u_p (from logs)
+    #   p >= 0
+    # Objective:
+    #   maximize p @ w (agent expected payment)
+    # This tries to find a plausible outcome distribution explaining the agent's acceptance.
+
+    def infer_p_given_contract_and_util(w, u_p):
+        c_obj = -np.array(w)  # maximize p @ w <=> minimize -p @ w
+        A_eq = [np.ones(m), v - w]
+        b_eq = [1.0, u_p]
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p_sol = res.x
+            # Numerical safeguard: clip and renormalize
+            p_sol = np.clip(p_sol, 0, None)
+            s = p_sol.sum()
+            if s > 0:
+                p_sol /= s
+            else:
+                p_sol = np.ones(m) / m
+            return p_sol
+        else:
+            # fallback uniform distribution
+            return np.ones(m) / m
+
+    p_list = []
+    for _, row in accepted.iterrows():
+        p_vec = infer_p_given_contract_and_util(row['Contract'], row['Principal Utility'])
+        p_list.append(p_vec)
+    p_array = np.vstack(p_list)  # shape (num_accepted, m)
+
+    # Step 2: Cluster inferred p's to identify distinct agent actions
+    # Use Agglomerative Clustering with distance threshold to adapt number of clusters
+    clusterer = AgglomerativeClustering(n_clusters=None, distance_threshold=0.15, linkage='average')
+    labels = clusterer.fit_predict(p_array)
+    n_actions = labels.max() + 1
+
+    # Compute cluster centers (mean p per cluster), normalize to valid distributions
+    centers = np.zeros((n_actions, m))
+    for a in range(n_actions):
+        members = p_array[labels == a]
+        mean_p = members.mean(axis=0)
+        mean_p = np.clip(mean_p, 0, None)
+        s = mean_p.sum()
+        centers[a] = mean_p / s if s > 0 else np.ones(m) / m
+
+    # Step 3: Infer agent costs for each action consistent with IR and IC:
+    # IR (Individual Rationality) for accepted logs assigned to cluster a:
+    #   p_a @ w_i - c_a >= 0  =>  c_a <= min_i p_a @ w_i
+    # IC (Incentive Compatibility) for rejected logs:
+    #   p_a @ w_j - c_a < 0  =>  c_a > max_j p_a @ w_j
+    # To satisfy both, pick c_a in (max_j p_a @ w_j, min_i p_a @ w_i]
+    # If empty interval, relax by choosing c_a = max(max_j p_a @ w_j, min_i p_a @ w_i) + small epsilon
+
+    eps = 1e-8
+    costs = np.zeros(n_actions)
+
+    accepted_contracts = np.array(accepted['Contract'].tolist())
+    rejected_contracts = np.array(rejected['Contract'].tolist()) if not rejected.empty else np.empty((0, m))
+
+    for a in range(n_actions):
+        p_a = centers[a]
+
+        # Accepted logs assigned to cluster a
+        accepted_idx = np.where(labels == a)[0]
+        if accepted_idx.size > 0:
+            p_w_acc = accepted_contracts[accepted_idx] @ p_a  # shape (num_assigned,)
+            c_upper = np.min(p_w_acc)
+        else:
+            # No accepted logs assigned: cost upper bound is +inf (no IR constraint)
+            c_upper = np.inf
+
+        # Rejected logs
+        if rejected_contracts.shape[0] > 0:
+            p_w_rej = rejected_contracts @ p_a  # shape (num_rejected,)
+            c_lower = np.max(p_w_rej)
+        else:
+            c_lower = -np.inf
+
+        # Determine feasible cost interval: (c_lower, c_upper]
+        if c_lower < c_upper:
+            costs[a] = max(c_lower + eps, 0.0)  # choose cost just above lower bound ensuring IC
+        else:
+            # No feasible cost interval, relax by choosing cost slightly above max of both bounds
+            costs[a] = max(c_lower, c_upper, 0.0) + eps
+
+    # Step 4: Validate and adjust costs if needed to explain logs
+
+    # Re-assign accepted logs to best action under inferred model
+    accept_utilities = accepted_contracts @ centers.T - costs  # shape (num_accept, n_actions)
+    accept_best_util = np.max(accept_utilities, axis=1)
+    accept_best_action = np.argmax(accept_utilities, axis=1)
+
+    # For accepted logs, agent utility must be ≥ 0 (allow small tolerance)
+    if np.any(accept_best_util < -eps):
+        # Increase costs tolerance and recompute costs slightly upwards
+        costs += eps * 10
+        costs = np.maximum(costs, 0.0)
+
+    # For rejected logs, no action should yield agent utility ≥ 0
+    if rejected_contracts.shape[0] > 0:
+        reject_utilities = rejected_contracts @ centers.T - costs  # shape (num_reject, n_actions)
+        reject_max_util = np.max(reject_utilities, axis=1)
+        if np.any(reject_max_util >= -eps):
+            # Increase costs to enforce rejection consistency
+            costs += eps * 100
+            costs = np.maximum(costs, 0.0)
+
+    # Final normalization and numerical safety
+    centers = np.clip(centers, 0, None)
+    centers /= centers.sum(axis=1, keepdims=True)
+
+    agent_setting = np.hstack([centers, costs.reshape(-1, 1)])
+
+    return agent_setting
+```

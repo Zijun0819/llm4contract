@@ -1,0 +1,85 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, minimize, Bounds
+from sklearn.mixture import GaussianMixture
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = len(v)
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs and not rejected_logs:
+        return np.zeros((1, m_outcomes + 1))
+    
+    # Process accepted logs with tighter Bayesian inference using GMM clustering
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])
+    accepted_utils = np.array([log['Principal Utility'] for log in accepted_logs])
+    
+    p_list = []
+    for i, w in enumerate(accepted_contracts):
+        u_p = accepted_utils[i]
+        c = -w
+        A_eq = np.vstack([np.ones(m_outcomes), v])
+        b_eq = np.array([1, u_p])
+        bounds = [(0, 1)] * m_outcomes
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p_list.append(res.x)
+    
+    if not p_list:
+        p_list = [np.ones(m_outcomes) / m_outcomes]
+    
+    p_array = np.array(p_list)
+    n_candidates = min(12, max(1, len(p_list)))
+    gmm = GaussianMixture(n_components=n_candidates, random_state=42, covariance_type='diag')
+    gmm.fit(p_array)
+    p_centroids = gmm.means_
+    n_actions = len(p_centroids)
+    
+    # Compute tight lower bounds for costs using epsilon-adjusted IR constraints
+    epsilon = 1e-8
+    cost_lower_bounds = np.zeros(n_actions)
+    for a in range(n_actions):
+        p_a = p_centroids[a]
+        min_w = np.inf
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            agent_util = np.dot(p_a, w)
+            if agent_util >= 0:
+                min_w = min(min_w, agent_util)
+        cost_lower_bounds[a] = max(0, min_w - epsilon) if min_w != np.inf else 0.0
+    
+    # Use a penalty-based objective to enforce IR and IC constraints strictly
+    def objective(costs):
+        penalty = 0.0
+        penalty_weight = 1000.0
+        for log in content:
+            w = np.array(log['Contract'])
+            utils = np.array([np.dot(p_centroids[a], w) - costs[a] for a in range(n_actions)])
+            max_util = np.max(utils)
+            best_action = np.argmax(utils)
+            if log['Agent Action'] == 1:
+                if max_util < -epsilon:
+                    penalty += penalty_weight * (-max_util)
+                # IC: Check if best action is indeed chosen
+                for a in range(n_actions):
+                    if a != best_action and utils[a] > utils[best_action] + epsilon:
+                        penalty += penalty_weight * (utils[a] - utils[best_action])
+            else:
+                if max_util >= -epsilon:
+                    penalty += penalty_weight * (max_util + epsilon)
+        return penalty
+    
+    # Optimize costs with constraints ensuring costs >= lower bounds
+    bounds = Bounds(cost_lower_bounds, np.full(n_actions, np.inf))
+    res = minimize(objective, cost_lower_bounds, method='SLSQP', bounds=bounds, options={'maxiter': 1000, 'ftol': 1e-10})
+    final_costs = res.x if res.success else cost_lower_bounds
+    
+    # Ensure non-negative costs and valid probabilities
+    final_costs = np.maximum(final_costs, 0)
+    p_centroids = np.clip(p_centroids, 0, 1)
+    p_centroids /= p_centroids.sum(axis=1, keepdims=True)
+    
+    agent_setting = np.hstack([p_centroids, final_costs.reshape(-1, 1)])
+    return agent_setting
+```

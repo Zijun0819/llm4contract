@@ -1,0 +1,82 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.mixture import BayesianGaussianMixture
+from scipy.optimize import minimize, Bounds
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = 12
+    logs_df = pd.DataFrame(content)
+    accepted_logs = logs_df[logs_df['Agent Action'] == 1].copy()
+    rejected_logs = logs_df[logs_df['Agent Action'] == -1].copy()
+    
+    if len(accepted_logs) == 0:
+        p0 = np.ones(n_outcomes) / n_outcomes
+        return np.hstack([p0, 0.0]).reshape(1, -1)
+    
+    accepted_contracts = np.array(accepted_logs['Contract'].tolist())
+    rejected_contracts = np.array(rejected_logs['Contract'].tolist()) if len(rejected_logs) > 0 else np.array([]).reshape(0, n_outcomes)
+    
+    utility_gaps = []
+    for idx, row in accepted_logs.iterrows():
+        contract = np.array(row['Contract'])
+        if row['Principal Utility'] > 0:
+            gap = np.max(contract) - np.min(contract)
+            utility_gaps.append(gap)
+        else:
+            utility_gaps.append(0.0)
+    
+    eps = np.percentile(utility_gaps, 10) if len(utility_gaps) > 0 else 1e-5
+    
+    candidate_actions = []
+    candidate_costs = []
+    for _, row in accepted_logs.iterrows():
+        contract = np.array(row['Contract'])
+        p = np.ones(n_outcomes) / n_outcomes
+        cost_estimate = 0.0
+        for _ in range(100):
+            agent_util = np.dot(p, contract)
+            cost_estimate = agent_util - eps
+            if cost_estimate < 0:
+                cost_estimate = 0
+            p_grad = contract - cost_estimate
+            p = p + 0.01 * p_grad
+            p = np.maximum(p, 0)
+            p /= p.sum()
+            if np.linalg.norm(p_grad) < 1e-6:
+                break
+        candidate_actions.append(p)
+        candidate_costs.append(cost_estimate)
+    
+    X = np.array(candidate_actions)
+    n_candidates = min(max(int(np.sqrt(len(accepted_logs))), 3), 15)
+    bgm = BayesianGaussianMixture(n_components=n_candidates, random_state=42, max_iter=1000, n_init=3).fit(X)
+    labels = bgm.predict(X)
+    cluster_centers = bgm.means_
+    
+    unique_labels = np.unique(labels)
+    cluster_centers = cluster_centers[unique_labels]
+    n_clusters = len(unique_labels)
+    
+    cluster_costs = [[] for _ in range(n_clusters)]
+    for i, label in enumerate(labels):
+        cluster_costs[label].append(candidate_costs[i])
+    
+    costs = np.zeros(n_clusters)
+    for a in range(n_clusters):
+        if len(cluster_costs[a]) > 0:
+            costs[a] = np.max(cluster_costs[a])
+        else:
+            costs[a] = 0.0
+    
+    if len(rejected_contracts) > 0:
+        for a in range(n_clusters):
+            rej_utils = rejected_contracts @ cluster_centers[a]
+            max_rej_util = np.max(rej_utils)
+            if max_rej_util >= costs[a] - eps:
+                costs[a] = max_rej_util + eps
+    
+    agent_setting = np.hstack([cluster_centers, costs.reshape(-1, 1)])
+    return agent_setting
+```

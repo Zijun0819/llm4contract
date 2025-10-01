@@ -1,0 +1,81 @@
+```python
+import numpy as np
+from sklearn.mixture import GaussianMixture
+from scipy.optimize import linprog
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_candidates = 20
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def mini_lp_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        m = len(w)
+        A_eq = [np.ones(m), v - w]
+        b_eq = [1.0, u]
+        bounds = [(0, 1)] * m
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w_i = log['Contract']
+            u_i = log['Principal Utility']
+            p_i = mini_lp_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+
+    if not candidate_ps:
+        raise ValueError("No valid accepted logs to infer agent strategies.")
+
+    all_p = np.array(candidate_ps)
+
+    gmm = GaussianMixture(n_components=n_candidates, random_state=0, n_init=10, max_iter=1000).fit(all_p)
+    p0 = gmm.means_
+
+    assigns = np.full(L, -1, dtype=int)
+    for i, log in enumerate(content):
+        if log['Agent Action'] == 1:
+            w = log['Contract']
+            assigns[i] = int(np.argmax(p0 @ w))
+
+    c_ir = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        idx = np.where(assigns == a)[0]
+        if idx.size > 0:
+            wages = np.array([content[i]['Contract'] for i in idx]).T
+            c_ir[a] = p0[a] @ wages.min(axis=1)
+        else:
+            c_ir[a] = 0.0
+
+    rej_idx = [i for i, log in enumerate(content) if log['Agent Action'] == -1]
+    if rej_idx:
+        wages_rej = np.array([content[i]['Contract'] for i in rej_idx]).T
+        rej_utils = p0 @ wages_rej
+        c_rej = rej_utils.max(axis=0)
+    else:
+        c_rej = np.zeros(n_candidates)
+
+    c_init = np.maximum(c_ir, c_rej)
+    agent_setting = np.hstack([p0, c_init[:, np.newaxis]])
+    return agent_setting
+
+v = np.array([0.00030864, 0.00034612, 0.0003836,  0.00042108, 0.00045856, 0.00049603,
+                   0.00053351, 0.00057098, 0.00060845, 0.00064593, 0.00068339, 0.00072086])
+    
+content = [
+    {'Contract': [0.00048462001738628946, 0.0003518371354986871, 0.000123, 0.000456, 0.000789, 0.000012, 0.000065, 0.000078, 0.000091, 0.000123, 0.000145, 0.000167], 'Principal Utility': 0.5, 'Agent Action': 1},
+    {'Contract': [0.0005969043600751138, 0.000159726691207727, 0.000234, 0.000567, 0.000890, 0.000034, 0.000076, 0.000098, 0.000123, 0.000145, 0.000167, 0.000189], 'Principal Utility': 0.6, 'Agent Action': 1},
+    {'Contract': [0.0006477983805553537, 0.0003980847732223108, 0.000345, 0.000678, 0.000901, 0.000056, 0.000087, 0.000109, 0.000123, 0.000145, 0.000167, 0.000189], 'Principal Utility': 0.7, 'Agent Action': 1},
+    {'Contract': [0.00016959469101641172, 7.6079774319487e-05, 0.000123, 0.000456, 0.000789, 0.000012, 0.000065, 0.000078, 0.000091, 0.000123, 0.000145, 0.000167], 'Principal Utility': 0.8, 'Agent Action': 1},
+    {'Contract': [0.00036553431748904844, 0.0005816466308603646, 0.000234, 0.000567, 0.000890, 0.000034, 0.000076, 0.000098, 0.000123, 0.000145, 0.000167, 0.000189], 'Principal Utility': 0.9, 'Agent Action': 1},
+    {'Contract': [0.0006912695365717878, 1.8941655778408166e-05, 0.000345, 0.000678, 0.000901, 0.000056, 0.000087, 0.000109, 0.000123, 0.000145, 0.000167, 0.000189], 'Principal Utility': 1.0, 'Agent Action': 1},
+    {'Contract': [0.0001619004548222183, 0.0006209899250736761, 0.000123, 0.000456, 0.000789, 0.000012, 0.000065, 0.000078, 0.000091, 0.000123, 0.000145, 0.000167], 'Principal Utility': 0.5, 'Agent Action': 1},
+    {'Contract': [0.0003015832142848912, 8.734102922542198e-05, 0.000234, 0.000567, 0.000890, 0.000034, 0.000076, 0.000098, 0.000123, 0.000145, 0.000167, 0.000189], 'Principal Utility': 0.6, 'Agent Action': 1},
+    {'Contract': [0.0004232348302242724, 0.0002444499816337658, 0.000345, 0.000678, 0.000901, 0.000056, 0.000087, 0.000109, 0.000123, 0.000145, 0.000167, 0.000189], 'Principal Utility': 0.7, 'Agent Action': 1},
+    {'Contract': [0.00014323942361522658, 0.0001113720688359591, 0.000123, 0.000456, 0.000789, 0.000012, 0.000065, 0.000078, 0.000091, 0.000123, 0.000145, 0.000167], 'Principal Utility': 0.8, 'Agent Action': 1}
+]
+
+agent_setting = agent_solver_v2(v, content)
+print(agent_setting)
+```

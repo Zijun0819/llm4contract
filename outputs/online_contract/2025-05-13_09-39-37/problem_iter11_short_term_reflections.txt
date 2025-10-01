@@ -1,0 +1,10 @@
+Tighten LP feasibility, refine clustering eps and silhouette criteria, increase cost update steps, extend iteration limit.
+Tighten LP constraints, refine clustering eps range, increase minimal cluster size, and use smaller incremental cost updates.
+Use tighter LP constraints, more silhouette checks, refined cost updates, and adaptive noise assignment for robust agent inference.
+Tighten LP feasibility, increase clustering sensitivity, refine cost increments, ensure strict IR/IC, normalize probabilities robustly.
+Use tighter LP constraints, finer clustering eps, smaller cost increments, and more iterations for improved IR/IC satisfaction.
+Use adaptive clustering with cosine similarity, assign noise points, and iteratively refine costs ensuring IR and IC constraints.
+Use cosine-based clustering, assign noise by similarity, refine costs iteratively ensuring tight IR and IC constraints.
+Use cosine-based clustering, assign noise by similarity, relax LP constraints, and iteratively refine costs for strict IR/IC.
+Tighten LP feasibility, refine clustering eps range, increase silhouette sample size, and iteratively adjust costs for strict IR/IC.
+Use cosine similarity for clustering, assign noise via similarity, refine costs minimally, and ensure strict IR/IC satisfaction.

@@ -1,0 +1,152 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions x [5 outcome probs + cost]) consistent with all logs.
+    Uses hierarchical clustering on accepted logs' contracts weighted by principal utility,
+    formulates and solves a LP to find consistent outcome distributions and costs satisfying IR and IC.
+    """
+    m = v.shape[0]
+    logs = content.copy()
+    L = len(logs)
+
+    # Separate accepted and rejected logs
+    accepted = logs[logs['Agent Action'] == 1]
+    rejected = logs[logs['Agent Action'] == -1]
+
+    # If no accepted logs, return trivial zero-cost uniform distributions
+    if accepted.empty:
+        uniform_p = np.ones(m) / m
+        return np.array([[*uniform_p, 0.0]])
+
+    # Step 1: Cluster accepted contracts weighted by principal utility (proxy for "importance")
+    # Use Agglomerative clustering with adjustable number clusters to find appropriate n
+    best_n = None
+    best_labels = None
+    best_score = np.inf
+
+    # We attempt cluster counts from 2 up to min(10, #accepted) to find parsimonious clustering
+    for n_clusters in range(2, min(10, len(accepted)) + 1):
+        clustering = AgglomerativeClustering(n_clusters=n_clusters, affinity='euclidean', linkage='ward')
+        # Use contracts weighted by principal utility as feature vectors
+        features = np.array(accepted['Contract'].tolist()) * accepted['Principal Utility'].values[:, None]
+        labels = clustering.fit_predict(features)
+        # Compute within cluster sum of squares (WSS) as score
+        wss = 0.0
+        for c in range(n_clusters):
+            members = features[labels == c]
+            if len(members) == 0:
+                continue
+            center = members.mean(axis=0)
+            wss += np.sum(np.linalg.norm(members - center, axis=1) ** 2)
+        # Choose n_clusters minimizing WSS normalized by n_clusters (to avoid overfitting)
+        score = wss / n_clusters
+        if score < best_score:
+            best_score = score
+            best_n = n_clusters
+            best_labels = labels
+
+    n = best_n
+    cluster_labels = best_labels
+    # Step 2: For each cluster, estimate a candidate outcome distribution p and cost c
+
+    # Prepare arrays to hold p and c for each action
+    ps = np.zeros((n, m))
+    cs = np.zeros(n)
+
+    # Helper: Solve LP for outcome distribution p given fixed contract payments and utility constraints
+    def solve_p_given_contracts(wages: np.ndarray, utilities: np.ndarray) -> np.ndarray:
+        # wages shape (m, k), k contracts; utilities shape (k,)
+        # Find p in simplex: sum p_i = 1, p_i >=0
+        # Constraints: p @ wages[:, j] >= utilities[j] for all j (IR constraints)
+        # Objective: minimize sum p_i to ensure feasibility (arbitrary)
+        c_obj = np.zeros(m)
+        A_ub = -wages.T  # -p @ wages <= -utilities  => p @ wages >= utilities
+        b_ub = -utilities
+        A_eq = np.ones((1, m))
+        b_eq = np.array([1])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq,
+                      bounds=bounds, method='highs')
+        if not res.success:
+            return None
+        return res.x
+
+    # Extract contracts and utilities per cluster
+    accepted_contracts = np.array(accepted['Contract'].tolist())  # shape (Na, m)
+    accepted_utils = np.array(accepted['Principal Utility'].tolist())  # shape (Na,)
+    for a in range(n):
+        idxs = np.where(cluster_labels == a)[0]
+        if len(idxs) == 0:
+            # No accepted logs in cluster: assign uniform distribution and zero cost
+            ps[a] = np.ones(m) / m
+            cs[a] = 0.0
+            continue
+        cluster_contracts = accepted_contracts[idxs].T  # shape (m, k)
+        cluster_utils = accepted_utils[idxs]  # shape (k,)
+
+        # Solve for p that rationalizes agent's acceptance (p @ wage >= utility)
+        p_sol = solve_p_given_contracts(cluster_contracts, cluster_utils)
+        if p_sol is None:
+            # Fallback: uniform distribution
+            p_sol = np.ones(m) / m
+        ps[a] = p_sol
+
+        # Cost c_a: minimal expected payment agent got (IR constraint)
+        # Cost = min_{contracts in cluster} p @ wage
+        costs = p_sol @ cluster_contracts
+        cs[a] = costs.min()
+
+    # Step 3: Enforce IC and IR constraints with rejected contracts
+
+    # For each rejected contract, agent must reject: max_a p_a @ w - c_a < 0
+    if not rejected.empty:
+        rejected_contracts = np.array(rejected['Contract'].tolist())  # (Nr, m)
+        # Compute utilities for all actions a over all rejected contracts
+        utilities_rej = ps @ rejected_contracts.T  # shape (n, Nr)
+        # The agent rejects if max_a (p_a @ w_j - c_a) < 0 for all j rejected
+        # We want c_a >= max_j (p_a @ w_j) for some j otherwise rejection condition violated
+
+        # We relax by adjusting c_a to be >= max rejected utility for action a
+        max_util_rej = utilities_rej.max(axis=1)
+        cs = np.maximum(cs, max_util_rej + 1e-8)  # small epsilon to ensure strict rejection
+
+    # Step 4: Verify accepted contracts satisfy IR: p_a @ w_i - c_a >= 0
+    # and log agent action acceptance/rejection consistency
+
+    # Assign each accepted log to its best matching action (max expected utility)
+    accepted_indices = accepted.index.to_numpy()
+    accepted_contracts_full = np.array(accepted['Contract'].tolist())
+    utilities_matrix = ps @ accepted_contracts_full.T - cs[:, None]  # (n, Na)
+    assigned_actions = utilities_matrix.argmax(axis=0)  # action per accepted log
+    utilities_assigned = utilities_matrix[assigned_actions, np.arange(len(accepted))]
+    # Check all utilities_assigned >=0 (agent accepted)
+    if not np.all(utilities_assigned >= -1e-6):
+        # Minor numerical tolerance allowed, else fallback: increase costs slightly
+        cs += 1e-6
+
+    # For rejected logs: check max_a (p_a @ w - c_a) < 0
+    if not rejected.empty:
+        rejected_contracts_full = np.array(rejected['Contract'].tolist())
+        rej_utils = ps @ rejected_contracts_full.T - cs[:, None]  # (n, Nr)
+        max_rej_util = rej_utils.max(axis=0)
+        if np.any(max_rej_util >= 0):
+            # Increase costs to ensure rejection consistency
+            cs += (max_rej_util.max() + 1e-5)
+
+    # Normalize ps rows to ensure valid probability distributions (sum=1, nonnegative)
+    ps = np.clip(ps, 0, None)
+    ps = ps / ps.sum(axis=1, keepdims=True)
+
+    # Ensure costs non-negative
+    cs = np.maximum(cs, 0)
+
+    # Return combined matrix: n x (m+1)
+    agent_setting = np.hstack([ps, cs[:, None]])
+    return agent_setting
+```

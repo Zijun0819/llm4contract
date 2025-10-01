@@ -1,0 +1,82 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+from collections import defaultdict
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    v = np.asarray(v)
+    m = len(v)
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        return np.hstack([np.eye(m), np.zeros((m, 1))])
+    
+    def solve_mini_lp(w, u_principal):
+        w_arr = np.asarray(w)
+        A_eq = np.vstack([np.ones(m), v - w_arr])
+        b_eq = np.array([1.0, u_principal])
+        try:
+            res = linprog(-w_arr, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * m, method='highs', options={'tol': 1e-12})
+            if res.success:
+                p = np.clip(res.x, 0, 1)
+                p_sum = np.sum(p)
+                if p_sum > 1e-10:
+                    p /= p_sum
+                    return p
+        except:
+            pass
+        return None
+    
+    ps_candidates = []
+    for log in accepted_logs:
+        p_candidate = solve_mini_lp(log['Contract'], log['Principal Utility'])
+        if p_candidate is not None:
+            ps_candidates.append(p_candidate)
+    
+    if not ps_candidates:
+        return np.hstack([np.eye(m), np.zeros((m, 1))])
+    
+    all_p = np.array(ps_candidates)
+    
+    n_components = min(10, max(2, len(all_p) // 10))
+    gmm = GaussianMixture(n_components=n_components, random_state=42, n_init=10)
+    gmm.fit(all_p)
+    gmm_centers = gmm.means_
+    gmm_centers = np.clip(gmm_centers, 0, 1)
+    gmm_centers = gmm_centers / np.sum(gmm_centers, axis=1, keepdims=True)
+    
+    epsilon = 1e-8
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])
+    action_costs = np.zeros(n_components)
+    for i in range(n_components):
+        utilities = np.dot(accepted_contracts, gmm_centers[i])
+        if utilities.size > 0:
+            action_costs[i] = np.maximum(np.min(utilities) - epsilon, 0)
+    
+    if rejected_logs:
+        rejected_contracts = np.array([log['Contract'] for log in rejected_logs])
+        rejected_utilities = np.dot(rejected_contracts, gmm_centers.T)
+        max_rejected_utilities = np.max(rejected_utilities, axis=0)
+        action_costs = np.maximum(action_costs, max_rejected_utilities + epsilon)
+    
+    agent_setting = np.hstack([gmm_centers, action_costs.reshape(-1, 1)])
+    
+    tolerance = 1e-6
+    unique_rows = defaultdict(list)
+    for i, row in enumerate(agent_setting):
+        key = tuple(np.round(row[:-1], int(-np.log10(tolerance))))
+        unique_rows[key].append(i)
+    
+    dedup_setting = []
+    for key, indices in unique_rows.items():
+        if indices:
+            costs = [agent_setting[idx, -1] for idx in indices]
+            representative_row = np.append(agent_setting[indices[0], :-1], np.min(costs))
+            dedup_setting.append(representative_row)
+    
+    dedup_setting = np.array(dedup_setting)
+    return dedup_setting
+```

@@ -1,0 +1,1 @@
+Tighten LP constraints and clustering eps with adaptive cosine similarity; increase silhouette checks and minimal cluster size; assign noise points by similarity; iteratively refine costs using small increments; extend iterations; jointly enforce strict IR and IC; normalize probabilities robustly for stable, valid agent inference.

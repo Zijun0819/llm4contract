@@ -1,0 +1,13 @@
+Optimize GMM with more components and init, refine thresholds from labels, increase iterations.
+Optimize with constraints via SLSQP, enforce IR/IC strictly, refine initial guesses from clustering.
+Improve clustering with rejected logs, refine cost initialization using both acceptance and rejection thresholds.
+1. Refine clusters using density weighting.
+2. Directly set costs from min accepted utility.
+3. Adjust for IR/IC with minimal perturbations.
+4. Validate all logs for consistency.
+Infer pairwise action constraints from logs; use sample weighting and refine optimization thresholds.
+Refine costs via optimization to enforce IR/IC constraints strictly.
+Infer actions from GMM clustering; initialize costs via utility thresholds from logs.
+Prioritize IR/IC constraints with weights, refine cost initialization, and filter valid actions post-optimization.
+Use tighter tolerance, simpler bounds, and refined cost initialization.
+Refine thresholds using tighter bounds; penalize constraint violations heavily in optimization.

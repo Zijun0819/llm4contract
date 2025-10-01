@@ -1,0 +1,10 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+→ Best principal utility: -inf
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 158, in <module>
+    obj = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 107, in evaluate_llm
+    agent_u = np.dot(p, inferred_contract) - c
+TypeError: unsupported operand type(s) for *: 'float' and 'NoneType'

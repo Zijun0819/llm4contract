@@ -1,0 +1,10 @@
+Increase n_candidates, refine cost calculation.
+Optimize GaussianMixture components.
+Adjust n_candidates and GMM parameters.
+Balance candidates to avoid overfitting.
+Optimize n_components using AIC.
+Optimize cost calculation for better agent settings.
+Optimize n_candidates and GaussianMixture parameters.
+Optimize GaussianMixture parameters.
+Increase n_candidates for better fit.
+Select optimal components for GaussianMixture.

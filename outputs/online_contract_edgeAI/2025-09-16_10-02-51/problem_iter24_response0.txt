@@ -1,0 +1,113 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, minimize, Bounds
+from sklearn.mixture import GaussianMixture
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = len(v)
+    
+    if not content:
+        uniform_p = np.ones(m_outcomes) / m_outcomes
+        return np.hstack([uniform_p.reshape(1, -1), np.zeros((1, 1))])
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    p_list = []
+    for log in accepted_logs:
+        w = np.array(log['Contract'])
+        u_p = log['Principal Utility']
+        if u_p <= 1e-12:
+            continue
+        c = -w
+        A_eq = np.vstack([np.ones(m_outcomes), v])
+        b_eq = np.array([1.0, u_p])
+        bounds = [(0.0, 1.0)] * m_outcomes
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs', tol=1e-12)
+        if res.success:
+            p = res.x
+            if np.all(p >= -1e-12) and np.abs(np.sum(p) - 1.0) <= 1e-12 and np.abs(np.dot(v, p) - u_p) <= 1e-12:
+                p_list.append(p)
+    
+    if not p_list:
+        p_list = [np.ones(m_outcomes) / m_outcomes]
+    
+    p_array = np.array(p_list)
+    n_candidates = min(12, max(1, len(p_list)))
+    gmm = GaussianMixture(
+        n_components=n_candidates, 
+        covariance_type='full', 
+        random_state=42, 
+        n_init=50, 
+        max_iter=5000,
+        tol=1e-10
+    )
+    gmm.fit(p_array)
+    p_centroids = gmm.means_
+    p_centroids = np.clip(p_centroids, 0, 1)
+    p_centroids = p_centroids / np.sum(p_centroids, axis=1, keepdims=True)
+    
+    n_actions = len(p_centroids)
+    epsilon = 1e-12
+    cost_lb = np.zeros(n_actions)
+    cost_ub = np.full(n_actions, np.inf)
+    
+    for a in range(n_actions):
+        p_a = p_centroids[a]
+        min_accepted = np.inf
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            util = np.dot(p_a, w)
+            if util >= -epsilon:
+                min_accepted = min(min_accepted, util)
+        if min_accepted != np.inf:
+            cost_lb[a] = max(0.0, min_accepted - epsilon)
+        
+        max_rejected = -np.inf
+        for log in rejected_logs:
+            w = np.array(log['Contract'])
+            util = np.dot(p_a, w)
+            if util < -epsilon:
+                max_rejected = max(max_rejected, util)
+        if max_rejected != -np.inf:
+            cost_ub[a] = max(0.0, -max_rejected + epsilon)
+    
+    penalty_weight = 1e15
+    
+    def constraint_violation(costs):
+        total_violation = 0.0
+        for log in content:
+            w = np.array(log['Contract'])
+            agent_utils = np.array([np.dot(p_centroids[a], w) - costs[a] for a in range(n_actions)])
+            max_util = np.max(agent_utils)
+            best_action = np.argmax(agent_utils)
+            
+            if log['Agent Action'] == 1:
+                if max_util < -epsilon:
+                    total_violation += penalty_weight * (-max_util)
+                for a in range(n_actions):
+                    if a != best_action:
+                        incentive_diff = agent_utils[best_action] - agent_utils[a]
+                        if incentive_diff < epsilon:
+                            total_violation += penalty_weight * (epsilon - incentive_diff)
+            else:
+                if max_util >= -epsilon:
+                    total_violation += penalty_weight * (max_util + epsilon)
+        return total_violation
+    
+    bounds = Bounds(cost_lb, cost_ub)
+    initial_guess = cost_lb.copy()
+    
+    res = minimize(
+        constraint_violation, 
+        initial_guess, 
+        method='SLSQP', 
+        bounds=bounds, 
+        options={'maxiter': 50000, 'ftol': 1e-15}
+    )
+    
+    final_costs = res.x if res.success else cost_lb
+    final_costs = np.maximum(final_costs, 0.0)
+    
+    return np.hstack([p_centroids, final_costs.reshape(-1, 1)])
+```

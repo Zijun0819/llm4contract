@@ -1,0 +1,53 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+→ Best action index:    98
+→ Best contract w:       [0.94877393 0.         0.         4.06570984 4.98148626]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 4.167710164782189
+→ Best action index:    44
+→ Best contract w:       [0.         0.         0.         4.64397531 4.71441563]
+[*] Instance 0: 1.586404151961264
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+→ Best action index:    99
+→ Best contract w:       [0.         0.         0.         1.12446972 3.61685831]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 2.3978820238241556
+→ Best action index:    17
+→ Best contract w:       [1.15054566 0.         1.98911216 0.20007937 2.20118187]
+[*] Instance 1: 2.1280441615106556
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+→ Best action index:    99
+→ Best contract w:       [0.         0.         0.         3.94248941 4.68859719]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 3.3819419256642034
+→ Best action index:    17
+→ Best contract w:       [0.         3.06343508 3.60500836 2.78226443 0.61448356]
+[*] Instance 2: 5.2287777321799105
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+→ Best action index:    99
+→ Best contract w:       [0.77289566 0.         0.         0.         5.2899921 ]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 3.4235887911110123
+→ Best action index:    44
+→ Best contract w:       [0.         0.         1.2679563  0.         5.80701935]
+[*] Instance 3: 0.7801380582466555
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_05.pkl with 5 instances.
+→ Best principal utility: 3.4351046687638447
+→ Best action index:    94
+→ Best contract w:       [1.23317453 0.         2.77318298 3.78799317 4.20489218]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 3.525577956681891
+→ Best action index:    62
+→ Best contract w:       [0.         0.         0.         6.35713702 0.        ]
+[*] Instance 4: 2.4526700640557806
+[*] Average:
+2.435206833590853

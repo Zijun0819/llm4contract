@@ -1,0 +1,54 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+The running time is：6.1212 seconds
+The inferred contract is [[3.83107762e-01 2.91555689e-01 1.99977157e-01 1.08318448e-01
+  1.70409443e-02 0.00000000e+00 0.00000000e+00 5.55111512e-17
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 5.55111512e-17
+  3.05442752e-01]
+ [3.94129612e-01 2.97475782e-01 1.99978241e-01 1.02730384e-01
+  5.68598019e-03 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  6.93889390e-17 4.16333634e-17 0.00000000e+00 0.00000000e+00
+  1.26798959e-04]]
+→ Best principal utility: 0.00022038543477962143
+→ Inferred agent&principal utility:    0.0003242017694916414 8.844570760204182e-05
+→ Agent and principal score:    0 0.0005309434573193408
+[*] Instance 0: 0.0005309434573193408
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+The running time is：6.4878 seconds
+The inferred contract is [[7.19092706e-01 2.80907294e-01 6.52256027e-16 4.85722573e-16
+  6.52256027e-16 9.71445147e-17 8.74300632e-16 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 7.07767178e-16
+  7.93205339e-05]
+ [4.98897535e-01 3.32781141e-01 1.67041576e-01 1.27974841e-03
+  2.49800181e-16 5.55111512e-17 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 2.77555756e-17 2.77555756e-17
+  9.20765020e-01]]
+→ Best principal utility: 0.00023984852786748103
+→ Inferred agent&principal utility:    3.95321694472821e-05 0.0003731153076464011
+→ Agent and principal score:    0 0.00024627385727498145
+[*] Instance 1: 0.00024627385727498145
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_differentiable_functions.py:317: UserWarning: delta_grad == 0.0. Check if the approximated function is linear. If the function is linear better results can be obtained by defining the Hessian as zero instead of using quasi-Newton approximations.
+  self.H.update(self.x - self.x_prev, self.g - self.g_prev)
+The running time is：6.9352 seconds
+The inferred contract is [[5.64911313e-01 3.33216387e-01 1.01872300e-01 0.00000000e+00
+  4.16333634e-16 3.88578059e-16 0.00000000e+00 2.77555756e-17
+  0.00000000e+00 0.00000000e+00 2.77555756e-16 0.00000000e+00
+  8.57631938e-01]
+ [7.30143315e-01 2.69856685e-01 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 1.24900090e-16 0.00000000e+00 1.52655666e-16
+  0.00000000e+00 2.08166817e-16 1.80411242e-16 0.00000000e+00
+  5.57981198e-05]]
+→ Best principal utility: 0.0002629567459902011
+→ Inferred agent&principal utility:    2.8947723792363913e-05 0.0003836997533013193
+→ Agent and principal score:    0 0.00023568941162006326
+[*] Instance 2: 0.00023568941162006326
+[*] Average:
+0.0003376355754047952

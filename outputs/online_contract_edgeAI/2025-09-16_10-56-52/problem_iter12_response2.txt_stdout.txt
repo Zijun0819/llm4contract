@@ -1,0 +1,20 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+The running time is：30.6688 seconds
+→ Best principal utility: 0.00040758268082912374
+→ The corresponding best action is: 4
+→ The corresponding agent utility is: 1.000989655747242e-16
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0005189549902364645
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 0.0001004341746850181
+→ The principal utility gap is: 0.0006193891649213826-0.0005189549902364645=0.00010043417468491805
+→ Agent and principal score:    0 0.00010043417468491805
+[*] Instance 0: 0.00010043417468491805
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16

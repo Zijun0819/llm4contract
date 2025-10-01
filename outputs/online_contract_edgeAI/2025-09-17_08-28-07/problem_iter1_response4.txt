@@ -1,0 +1,116 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import minimize, linprog
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+import itertools
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = len(v)
+    L = len(content)
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        default_p = np.ones(m_outcomes) / m_outcomes
+        default_c = 0.0
+        return np.hstack([default_p.reshape(1, -1), [[default_c]]])
+    
+    def solve_dual_lp(w, u):
+        c = -w
+        A_eq = np.array([np.ones(m_outcomes), v - w])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, None)] * m_outcomes
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+    
+    candidate_distributions = []
+    for log in accepted_logs:
+        w = np.array(log['Contract'])
+        u = log['Principal Utility']
+        p = solve_dual_lp(w, u)
+        if p is not None and np.all(p >= -1e-10):
+            p = np.maximum(p, 0)
+            p = p / np.sum(p)
+            candidate_distributions.append(p)
+    
+    if not candidate_distributions:
+        default_p = np.ones(m_outcomes) / m_outcomes
+        default_c = 0.0
+        return np.hstack([default_p.reshape(1, -1), [[default_c]]])
+    
+    candidate_distributions = np.array(candidate_distributions)
+    
+    n_actions_candidates = [2, 3, 4, 5, 6, 7, 8]
+    best_score = -np.inf
+    best_setting = None
+    
+    for n_actions in n_actions_candidates:
+        n_actions = min(n_actions, len(candidate_distributions))
+        
+        if len(candidate_distributions) >= n_actions:
+            gmm = GaussianMixture(n_components=n_actions, random_state=42, max_iter=200)
+            try:
+                gmm.fit(candidate_distributions)
+                action_probs = gmm.means_
+            except:
+                kmeans = KMeans(n_clusters=n_actions, random_state=42, n_init=10)
+                kmeans.fit(candidate_distributions)
+                action_probs = kmeans.cluster_centers_
+        else:
+            action_probs = candidate_distributions[:n_actions]
+        
+        action_probs = np.maximum(action_probs, 1e-8)
+        action_probs = action_probs / action_probs.sum(axis=1, keepdims=True)
+        
+        action_costs = np.zeros(n_actions)
+        
+        for i, log in enumerate(accepted_logs):
+            w = np.array(log['Contract'])
+            expected_utilities = action_probs @ w - action_costs
+            best_action = np.argmax(expected_utilities)
+            
+            required_cost = action_probs[best_action] @ w
+            action_costs[best_action] = max(action_costs[best_action], required_cost - 1e-6)
+        
+        if rejected_logs:
+            for log in rejected_logs:
+                w = np.array(log['Contract'])
+                max_utility = np.max(action_probs @ w - action_costs)
+                if max_utility >= 0:
+                    violation = max_utility
+                    best_action = np.argmax(action_probs @ w - action_costs)
+                    action_costs[best_action] += violation + 1e-6
+        
+        acceptance_errors = 0
+        rejection_errors = 0
+        
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            max_utility = np.max(action_probs @ w - action_costs)
+            if max_utility < -1e-6:
+                acceptance_errors += 1
+        
+        for log in rejected_logs:
+            w = np.array(log['Contract'])
+            max_utility = np.max(action_probs @ w - action_costs)
+            if max_utility > 1e-6:
+                rejection_errors += 1
+        
+        total_errors = acceptance_errors + rejection_errors
+        complexity_penalty = n_actions * 0.1
+        score = -(total_errors + complexity_penalty)
+        
+        if score > best_score:
+            best_score = score
+            best_setting = np.hstack([action_probs, action_costs.reshape(-1, 1)])
+    
+    if best_setting is None:
+        default_p = np.ones(m_outcomes) / m_outcomes
+        default_c = 0.0
+        best_setting = np.hstack([default_p.reshape(1, -1), [[default_c]]])
+    
+    return best_setting
+```

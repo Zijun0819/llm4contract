@@ -1,0 +1,54 @@
+```python
+import numpy as np
+from sklearn.cluster import KMeans
+from scipy.optimize import minimize
+from sklearn.preprocessing import normalize
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+
+    n_candidates = 5
+    m_outcomes = v.shape[0]
+    
+    candidate_ps = []
+
+    for log in content:
+        contract = np.array(log['Contract'])
+        agent_action = log['Agent Action']
+
+        if agent_action == 1:
+            def objective(p):
+                return -np.dot(contract, p)
+
+            constraints = ({'type': 'eq', 'fun': lambda p: np.sum(p) - 1})
+            bounds = [(0, 1) for _ in range(m_outcomes)]
+            initial_guess = np.ones(m_outcomes) / m_outcomes
+            result = minimize(objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+
+            if result.success:
+                p = result.x
+                candidate_ps.append(p)
+
+    if not candidate_ps:
+        return np.zeros((0, m_outcomes + 1))
+
+    all_p = np.array(candidate_ps)
+    all_p = normalize(all_p, axis=1, norm='l1')
+
+    kmeans = KMeans(n_clusters=min(n_candidates, len(all_p)), random_state=0, n_init=10, algorithm="lloyd")
+    kmeans.fit(all_p)
+    p0 = kmeans.cluster_centers_
+
+    costs = np.zeros(p0.shape[0])
+
+    for i in range(p0.shape[0]):
+        min_rej_val = 0
+        for log in content:
+            if log['Agent Action'] == -1:
+                contract = np.array(log['Contract'])
+                util = np.dot(p0[i], contract)
+                min_rej_val = max(min_rej_val, util)
+        costs[i] = max(min_rej_val, 0)
+
+    agent_setting = np.hstack([p0, costs[:, np.newaxis]])
+    return agent_setting
+```

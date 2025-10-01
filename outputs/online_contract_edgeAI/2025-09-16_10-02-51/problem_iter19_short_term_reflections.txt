@@ -1,0 +1,10 @@
+Refine cost bounds using rejection logs to tighten feasible regions; enforce stricter IC constraints with penalties.
+Refine cost bounds from rejected logs; use tighter constraints and smarter penalty scaling.
+Use tighter cost bounds and simpler clustering with explicit constraint enforcement.
+Use tighter bounds on costs and reduce overfitting via efficient clustering and constraints.
+Refine cost bounds, tighten IC constraints, and explicitly ensure IR via constraints.
+Refine cost bounds using both accepted and rejected logs; include action-specific feasibility checks.
+Improve clustering settings; use tighter cost bounds and more reliable optimization for constraints.
+Focus on tight IR and IC constraints, simplify optimization, and ensure accurate cost bounds.
+Prefer SLSQP for efficiency; enforce tighter bounds to reduce violation; use diag covariances.
+Improve cost bounds using rejection logs, and refine penalties to strictly enforce IC constraints.

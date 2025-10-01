@@ -1,0 +1,10 @@
+Reduce n_candidates for better performance.
+Increase n_candidates, refine GaussianMixture initialization.
+Reduce n_candidates for better fit.
+Increase n_candidates and improve GaussianMixture fitting.
+Reduce n_candidates for better fit.
+Increase candidates, optimize LP, and refine GaussianMixture.
+Optimize GaussianMixture parameters.
+Increase n_candidates, optimize linprog.
+Try smaller n_candidates and multiple GMM initializations.
+Increase n_candidates and n_init for GaussianMixture.

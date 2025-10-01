@@ -1,0 +1,87 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+
+def agent_solver_v2(v, content):
+    n_candidates = 12
+    m_outcomes = len(v)
+    L = len(content)
+    
+    def solve_mini_lp(w, u):
+        m = len(w)
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(w, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    candidate_utils = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w_i = np.array(log['Contract'])
+            u_i = log['Principal Utility']
+            p_i = solve_mini_lp(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+                candidate_utils.append(u_i)
+    
+    if not candidate_ps:
+        return np.zeros((1, m_outcomes + 1))
+    
+    all_p = np.array(candidate_ps)
+    kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=20).fit(all_p)
+    p0 = kmeans.cluster_centers_
+    p0 = np.clip(p0, 0, 1)
+    p0 /= p0.sum(axis=1, keepdims=True)
+    
+    labels = kmeans.labels_
+    action_costs = np.zeros(n_candidates)
+    valid_actions = []
+    
+    for a in range(n_candidates):
+        cluster_indices = np.where(labels == a)[0]
+        if len(cluster_indices) == 0:
+            continue
+        cluster_wages = [np.array(content[i]['Contract']) for i, log in enumerate(content) if log['Agent Action'] == 1 and labels[i] == a]
+        if not cluster_wages:
+            continue
+        cluster_wages = np.array(cluster_wages).T
+        c_lb = np.min(p0[a] @ cluster_wages)
+        
+        def cost_constraint(c_a):
+            violations = []
+            for i, log in enumerate(content):
+                w = np.array(log['Contract'])
+                if log['Agent Action'] == 1:
+                    if labels[i] == a:
+                        if p0[a] @ w - c_a < -1e-8:
+                            violations.append((p0[a] @ w - c_a) ** 2)
+                    else:
+                        if p0[a] @ w - c_a > max([p0[b] @ w - action_costs[b] for b in valid_actions] + [0]) + 1e-8:
+                            violations.append((p0[a] @ w - c_a - 0) ** 2)
+                else:
+                    if p0[a] @ w - c_a >= 0:
+                        violations.append((p0[a] @ w - c_a) ** 2)
+            return np.sum(violations) if violations else 0
+        
+        res = minimize(lambda c: cost_constraint(c[0]), [c_lb], bounds=[(c_lb, None)], method='L-BFGS-B')
+        action_costs[a] = res.x[0] if res.success else c_lb
+        valid_actions.append(a)
+    
+    final_p = p0[valid_actions]
+    final_c = action_costs[valid_actions]
+    
+    for i, log in enumerate(content):
+        w = np.array(log['Contract'])
+        if log['Agent Action'] == -1:
+            if np.any(final_p @ w - final_c >= -1e-8):
+                best_action = np.argmax(final_p @ w - final_c)
+                final_c[best_action] = max(final_c[best_action], (final_p[best_action] @ w) + 1e-8)
+    
+    agent_setting = np.hstack([final_p, final_c[:, np.newaxis]])
+    return agent_setting
+```

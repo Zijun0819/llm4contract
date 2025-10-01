@@ -1,0 +1,1 @@
+Refine GMM with fewer, tighter clusters. Use stricter IR/IC with epsilon-tight bounds. Simplify cost calibration using all logs. Normalize probabilities, enforce non-negativity, and merge clusters for efficiency. Prioritize numerical stability in LP and clustering.

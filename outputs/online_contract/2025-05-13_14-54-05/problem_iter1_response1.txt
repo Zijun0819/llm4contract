@@ -1,0 +1,150 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix for online contract design given principal's reward vector v
+    and historical interaction logs content (DataFrame with columns: Contract, Principal Utility, Agent Action).
+
+    Returns:
+        agent_setting: np.ndarray of shape (n_actions, 6), where each row is [p_1, ..., p_5, cost].
+    """
+    m_outcomes = v.shape[0]
+    logs = content.copy()
+    L = len(logs)
+
+    # Extract contracts, utilities, and accept/reject flags
+    contracts = np.vstack(logs['Contract'].values)  # shape (L, 5)
+    utilities = logs['Principal Utility'].values    # shape (L,)
+    agent_actions = logs['Agent Action'].values     # shape (L,), 1 or -1
+
+    # Step 1: Define candidate action outcomes via clustering accepted contracts' induced outcome frequencies
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    if len(accepted_idx) == 0:
+        # No acceptance => trivial agent with single action: uniform distribution and zero cost
+        p_trivial = np.ones(m_outcomes) / m_outcomes
+        cost_trivial = 0.0
+        return np.hstack([p_trivial, cost_trivial])[np.newaxis, :]
+
+    accepted_contracts = contracts[accepted_idx]  # shape (num_accepted, 5)
+    accepted_utils = utilities[accepted_idx]     # shape (num_accepted,)
+
+    # Step 2: For accepted contracts, infer agent outcome distributions p_i by solving LPs:
+    # For each accepted contract w_i and principal utility u_i:
+    # Solve for p_i: max_{p_i} p_i @ w_i subject to p_i @ v = u_i + c (unknown c)
+    # Because agent utility = p_i @ contract - cost >= 0 and principal utility = p_i @ (v - contract)
+    # But cost unknown, so we can't solve directly the p_i. Instead, approximate p_i by maximizing likelihood to produce observed utilities.
+    # Instead, use relaxed approach: find p_i that matches distribution shape inferred from contracts rewarding accepted actions.
+
+    # We approximate p_i by projecting contracts onto simplex of outcome probabilities weighted by v.
+
+    # Initial guess for candidate p by normalizing contracts weighted by v:
+    # For accepted contract w_i, infer p_i proportional to (w_i + small epsilon) / sum(w_i + epsilon)
+    # This is heuristic for plausible outcome distribution that justifies contract payments.
+
+    epsilon = 1e-6
+    candidate_ps = []
+    for w in accepted_contracts:
+        # We try to find p solving:
+        # max_{p} p @ w s.t. p in simplex and p @ v = u_unknown; here approximate by p proportional to w + epsilon
+        p0 = np.maximum(w, 0) + epsilon
+        p0 /= p0.sum()
+        candidate_ps.append(p0)
+    candidate_ps = np.array(candidate_ps)  # shape (num_accepted, 5)
+
+    # Step 3: Cluster candidate_ps by Agglomerative Clustering (more flexible than KMeans)
+    # Dynamic number of clusters: try from 3 to min(10, num_accepted)
+    min_clusters = 3
+    max_clusters = min(10, len(candidate_ps))
+    best_n_clusters = min_clusters
+    best_inertia = np.inf
+    best_labels = None
+    best_centers = None
+
+    for n_clusters in range(min_clusters, max_clusters + 1):
+        clustering = AgglomerativeClustering(n_clusters=n_clusters).fit(candidate_ps)
+        labels = clustering.labels_
+        centers = np.array([candidate_ps[labels == k].mean(axis=0) for k in range(n_clusters)])
+
+        # Compute inertia (sum squared distances)
+        inertia = 0
+        for i in range(n_clusters):
+            cluster_points = candidate_ps[labels == i]
+            if cluster_points.shape[0] == 0:
+                continue
+            diff = cluster_points - centers[i]
+            inertia += np.sum(np.linalg.norm(diff, axis=1) ** 2)
+
+        # Choose clustering with minimal inertia
+        if inertia < best_inertia:
+            best_inertia = inertia
+            best_n_clusters = n_clusters
+            best_labels = labels
+            best_centers = centers
+
+    p_candidates = best_centers  # shape (n_actions, 5)
+    n_actions = p_candidates.shape[0]
+
+    # Normalize centers to simplex (force sum=1 and nonnegative)
+    p_candidates = np.maximum(p_candidates, 0)
+    p_candidates /= p_candidates.sum(axis=1, keepdims=True)
+
+    # Step 4: Infer agent costs c for each candidate action
+    # For accepted contracts assigned to cluster a, cost c_a satisfies:
+    # agent utility: p_a @ contract - c_a >= 0 => c_a <= p_a @ contract
+    # principal utility: contract @ (v - contract) = principal's utility (given)
+    # Use tightest lower bound c_a = min_i p_a @ w_i over accepted contracts assigned to cluster a
+
+    c_candidates = np.zeros(n_actions)
+    for a in range(n_actions):
+        assigned_idx = accepted_idx[best_labels == a]
+        if assigned_idx.size == 0:
+            # No accepted contracts assigned: minimal cost zero (agent may never accept this action)
+            c_candidates[a] = 0.0
+            continue
+        wages_a = contracts[assigned_idx]  # shape (#assigned, 5)
+        p_a = p_candidates[a]  # shape (5,)
+        costs_lower_bounds = wages_a @ p_a  # shape (#assigned,)
+        c_candidates[a] = costs_lower_bounds.min()  # max IR consistent cost
+
+    # Step 5: Enforce IC constraints for rejecting contracts
+    # For each rejecting contract w_r: for all actions a: p_a @ w_r - c_a < 0 (agent rejects)
+    # If violated, increase c_a to enforce rejection
+
+    if len(rejected_idx) > 0:
+        w_reject = contracts[rejected_idx]  # shape (#reject, 5)
+        for a in range(n_actions):
+            p_a = p_candidates[a]
+            utilities_reject = w_reject @ p_a - c_candidates[a]  # shape (#reject,)
+            max_viol = utilities_reject.max()
+            if max_viol >= 0:
+                c_candidates[a] += max_viol + 1e-4  # small margin to enforce rejection
+
+    # Step 6: Enforce IR constraints for accepted contracts again after rejection adjustment:
+    # For each accepted contract assigned to a: p_a @ w_i - c_a >= 0 else increase c_a accordingly
+
+    for a in range(n_actions):
+        assigned_idx = accepted_idx[best_labels == a]
+        if assigned_idx.size == 0:
+            continue
+        wages_a = contracts[assigned_idx]  # shape (#assigned, 5)
+        p_a = p_candidates[a]
+        deficits = c_candidates[a] - wages_a @ p_a  # shape (#assigned,)
+        max_deficit = deficits.max()
+        if max_deficit > 0:
+            c_candidates[a] += max_deficit + 1e-4  # increase cost to maintain IR
+
+    # Step 7: Ensure costs are non-negative
+    c_candidates = np.maximum(c_candidates, 0.0)
+
+    # Step 8: Final output: stack probabilities and costs
+    agent_setting = np.hstack([p_candidates, c_candidates[:, None]])  # shape (n_actions, 6)
+
+    return agent_setting
+```

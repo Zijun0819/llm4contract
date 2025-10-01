@@ -1,0 +1,145 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import DBSCAN
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix [p (5 outcomes), cost] from historical logs.
+
+    Args:
+        v: Principal's reward vector of length 5.
+        content: DataFrame with columns ['Contract', 'Principal Utility', 'Agent Action']:
+            - Contract: list of 5 payments,
+            - Principal Utility: float (0 if rejected),
+            - Agent Action: 1 (accept), -1 (reject).
+
+    Returns:
+        n x 6 array: each row [p1, p2, p3, p4, p5, cost] for an inferred agent action.
+    """
+
+    m = v.shape[0]
+    logs = content.copy()
+    L = len(logs)
+
+    # Extract contracts, utilities and actions
+    contracts = np.vstack(logs['Contract'].values)  # (L,5)
+    utilities = logs['Principal Utility'].values    # (L,)
+    actions = logs['Agent Action'].values            # (L,)
+
+    # Step 1: Filter accepted logs (agent utility >=0) to infer candidate outcome distributions
+    # We'll solve for p (prob vector) and c (cost) such that:
+    # p @ w - c >=0 for accepted logs with contract w
+    # p @ w - c <0 for rejected logs
+
+    # The agent's expected utility = p @ w - c
+    # For accepted logs: p @ w >= c (agent utility >=0)
+    # For rejected logs: p @ w < c (agent utility <0)
+
+    accepted_idx = np.where(actions == 1)[0]
+    rejected_idx = np.where(actions == -1)[0]
+
+    # Step 2: Infer candidate outcome distributions p for accepted logs:
+    # For each accepted contract, we try to find a p explaining it.
+    # We solve a linear program to find p s.t. p @ w >= c (unknown c)
+    # We relax c to unknown and use clustering on p.
+
+    def solve_p_given_w(w):
+        # Try to find p s.t. p @ w >= 0 (agent utility >=0),
+        # p is a prob vector summing to 1, p >=0
+        # We'll maximize p @ w under constraints p>=0 sum=1
+        # The max p @ w is max_{p in simplex} p @ w = max(w)
+        # so p can put probability 1 on outcome with max w_i.
+        # But we want a more balanced p to explain agent behavior.
+        # We solve LP: max p @ w s.t p sum=1, p>=0
+        c_obj = -w  # maximize p @ w <=> minimize -p @ w
+        A_eq = np.ones((1, m))
+        b_eq = np.array([1])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            return res.x
+        else:
+            return None
+
+    candidate_ps = []
+    for i in accepted_idx:
+        w = contracts[i]
+        p = solve_p_given_w(w)
+        if p is not None:
+            candidate_ps.append(p)
+    candidate_ps = np.array(candidate_ps)
+    if candidate_ps.shape[0] == 0:
+        raise ValueError("No accepted logs lead to feasible outcome distributions.")
+
+    # Step 3: Cluster candidate_ps to identify distinct agent actions
+    # Use DBSCAN to discover natural clusters (unknown number)
+    clustering = DBSCAN(eps=0.1, min_samples=3).fit(candidate_ps)
+    labels = clustering.labels_
+    unique_labels = [lab for lab in set(labels) if lab != -1]  # ignore noise -1
+
+    if not unique_labels:
+        # fallback: assign all to one cluster
+        unique_labels = [0]
+        labels = np.zeros(candidate_ps.shape[0], dtype=int)
+
+    ps_clustered = []
+    for lab in unique_labels:
+        cluster_ps = candidate_ps[labels == lab]
+        centroid = np.mean(cluster_ps, axis=0)
+        centroid /= centroid.sum()  # normalize to sum to 1
+        ps_clustered.append(centroid)
+    ps_clustered = np.array(ps_clustered)
+
+    n_actions = ps_clustered.shape[0]
+
+    # Step 4: For each cluster (agent action), infer minimal cost c to satisfy
+    # accepted logs assigned to that cluster:
+    # c <= p @ w for all accepted logs assigned to that action
+    # For rejected logs, ensure c > p @ w for all actions
+
+    # Assign each accepted log to closest cluster by L2 distance on p
+    accepted_ps = candidate_ps
+    accepted_labels = labels
+    # Build a mapping from accepted_idx to cluster label (or noise)
+    accepted_map = dict(zip(accepted_idx, accepted_labels))
+
+    # For each action cluster, collect contracts assigned to it
+    costs = np.zeros(n_actions)
+    for a in range(n_actions):
+        idx_a = [i for i in accepted_idx if accepted_map.get(i, -1) == unique_labels[a]]
+        if len(idx_a) == 0:
+            # No accepted logs for this cluster, set cost 0
+            costs[a] = 0.0
+            continue
+        w_a = contracts[idx_a]  # (num_logs,5)
+        p_a = ps_clustered[a]   # (5,)
+        # cost c <= min_{logs} p @ w
+        vals = w_a @ p_a
+        costs[a] = vals.min()
+
+    # Step 5: Adjust costs to satisfy rejection constraints:
+    # For each rejected log w_r, agent utility < 0 for all actions:
+    # p_a @ w_r - c_a < 0  => c_a > p_a @ w_r
+    # So cost_a >= max_{rejected logs} p_a @ w_r + epsilon
+    epsilon = 1e-6
+    if len(rejected_idx) > 0:
+        w_rej = contracts[rejected_idx]  # (num_rej,5)
+        for a in range(n_actions):
+            p_a = ps_clustered[a]
+            rej_vals = w_rej @ p_a  # (num_rej,)
+            costs[a] = max(costs[a], rej_vals.max() + epsilon)
+
+    # Step 6: Ensure costs are non-negative
+    costs = np.maximum(costs, 0.0)
+
+    # Step 7: Normalize ps_clustered rows to sum to 1 for safety
+    ps_norm = ps_clustered / ps_clustered.sum(axis=1, keepdims=True)
+
+    # Step 8: Construct agent setting matrix n_actions x 6
+    agent_setting = np.hstack([ps_norm, costs[:, None]])
+
+    return agent_setting
+```

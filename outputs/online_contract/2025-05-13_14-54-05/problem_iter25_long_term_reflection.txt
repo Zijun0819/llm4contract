@@ -1,0 +1,1 @@
+Normalize candidate probabilities before clustering; tighten IR/IC margins with strict inequalities; apply adaptive, refined elbow detection; robustly remove empty clusters early; limit iterative cost adjustments; ensure numeric stability via repeated normalization and convergence checks for feasible, stable agent inference.

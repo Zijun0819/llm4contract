@@ -1,0 +1,1 @@
+def agent_solver_v{version}(v: np.ndarray, content: list[dict]) -> np.ndarray:

@@ -1,0 +1,183 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import AgglomerativeClustering
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting (actions' outcome distributions and costs) from historical interaction logs.
+
+    Arguments:
+    - v: Principal's reward vector for 5 outcomes (shape (5,))
+    - content: List of dict logs, each with keys: 'Contract' (list of 5 payments),
+               'Principal Utility' (float), 'Agent Action' (1 for accept, -1 for reject)
+
+    Returns:
+    - agent_setting: np.ndarray shape (n_actions, 6),
+      each row: [p_0, p_1, p_2, p_3, p_4, cost],
+      where p_i are probabilities summing to 1 over outcomes,
+      and cost >= 0 agent cost for that action.
+    """
+
+    payoff_dim = 5
+    logs = pd.DataFrame(content)
+    num_logs = len(logs)
+
+    contracts = np.stack(logs['Contract'].values)  # shape (num_logs, 5)
+    principal_utils = logs['Principal Utility'].values  # shape (num_logs,)
+    actions = logs['Agent Action'].values  # +1 accept / -1 reject
+
+    # Step 0: Sanity check & prepare sets
+    accept_mask = actions == 1
+    reject_mask = actions == -1
+
+    # Step 1: Identify distinct acceptance "types" by clustering contracts chosen in acceptance
+    accepted_contracts = contracts[accept_mask]
+    accepted_pus = principal_utils[accept_mask]
+
+    if len(accepted_contracts) == 0:
+        # fallback: return single uniform distribution with zero cost
+        uniform_p = np.ones(payoff_dim) / payoff_dim
+        return np.hstack([uniform_p, np.array([0.0])])[np.newaxis, :]
+
+    # Use hierarchical clustering to adaptively find groups of accepted contracts to explain various actions
+    max_actions = min(10, len(accepted_contracts))  # limit max #actions model to 10 or fewer observations
+
+    cluster_model = AgglomerativeClustering(n_clusters=None, distance_threshold=0.5, linkage='ward')
+    cluster_model.fit(accepted_contracts)
+    n_clusters = max(cluster_model.labels_.max() + 1, 1)
+    if n_clusters > max_actions:
+        # cap clusters to max_actions using kmeans
+        from sklearn.cluster import KMeans
+        kmeans = KMeans(n_clusters=max_actions, random_state=0, n_init=10)
+        clusters_labels = kmeans.fit_predict(accepted_contracts)
+        n_clusters = max_actions
+        cluster_centers = kmeans.cluster_centers_
+
+    else:
+        clusters_labels = cluster_model.labels_
+        cluster_centers = []
+        for k in range(n_clusters):
+            cluster_centers.append(accepted_contracts[clusters_labels == k].mean(axis=0))
+        cluster_centers = np.vstack(cluster_centers)
+
+    # Step 2: For each cluster, solve for a distribution p (over outcomes) that could explain the payments
+    # We model contracts in cluster k as roughly p_k · w_i ≈ expected agent payoff = cost + agent utility
+    # Since agent accepts, agent utility ≥ 0, and agent payoff = E_p[w_i] - cost ≥ 0
+
+    # Estimate outcome distributions p for each cluster via convex optimization
+    # Minimize sum of squared residuals between expected contract payment and principal utility (proxy)
+    # under constraints that p_k sums to 1 and is probability vector
+
+    p_estimates = np.zeros((n_clusters, payoff_dim))
+    cost_estimates = np.zeros(n_clusters)
+    epsilon = 1e-8
+
+    for cluster_idx in range(n_clusters):
+        cidx = np.where(clusters_labels == cluster_idx)[0]
+        if len(cidx) == 0:
+            continue
+        W_cluster = accepted_contracts[cidx]  # contracts rows in cluster
+        PU_cluster = accepted_pus[cidx]
+
+        # We want to find p_k : argmin sum_i (p_k.w_i - PU_i + cost_k)^2 and cost_k ≥ 0
+        # But cost_k unknown; rewrite as ||W_cluster p_k - (PU_cluster - cost_k vector)||²
+
+        # Use alternating minimization:
+        # init cost_k=0, solve for p_k; then update cost_k = min_i (p_k · w_i - PU_i)
+
+        # p_k: prob vector size 5, sum p_k =1, p_k ≥0
+        # After linearization, solve QP min ||W_cluster p_k - (PU_cluster - cost_k)||²
+
+        def objective(p_cost):
+            p = p_cost[:-1]
+            cst = p_cost[-1]
+            if np.any(p < -1e-8) or abs(np.sum(p) - 1) > 1e-6 or cst < -1e-8:
+                return 1e10
+            errors = W_cluster @ p - (PU_cluster - cst)
+            return (errors**2).sum()
+
+        # initial guess uniform p and cost zero
+        x0 = np.zeros(payoff_dim + 1)
+        x0[:payoff_dim] = 1.0 / payoff_dim
+        x0[-1] = 0.0
+
+        # constraints:
+        cons = ({
+            'type': 'eq',
+            'fun': lambda x: np.sum(x[:-1]) - 1
+        },{
+            'type': 'ineq',
+            'fun': lambda x: x[:-1]  # p≥0
+        },{
+            'type': 'ineq',
+            'fun': lambda x: x[-1]   # cost≥0
+        })
+
+        res = minimize(objective, x0, method='SLSQP', constraints=cons, options={'ftol':1e-9,'disp':False,'maxiter':1000})
+        p_hat = np.clip(res.x[:-1], 0, 1)
+        p_hat = p_hat / p_hat.sum()  # renormalize in case slight drifting
+        cost_hat = max(0.0, res.x[-1])
+
+        p_estimates[cluster_idx] = p_hat
+        cost_estimates[cluster_idx] = cost_hat
+
+    # Step 3: Enforce agent IR and IC on all logs - adjust costs upwards if needed
+    # IR: For accepted logs, some action k satisfies E_p_k[contract_i] - cost_k ≥ 0
+    # IC: Reject logs must have max_k E_p_k[contract_i] - cost_k < 0
+
+    # Build matrix: expected payoffs for all logs and all estimated p's
+    expected_payoffs = contracts @ p_estimates.T  # shape (num_logs, n_clusters)
+    utilities = expected_payoffs - cost_estimates  # shape (num_logs, n_clusters)
+
+    # For each accepted log, ensure exists an action with utility ≥ 0 and that max utility is close to principal utility + small slack
+    for i in range(num_logs):
+        u_vec = utilities[i]
+        if actions[i] == 1:
+            # ensure max_k utility[k] ≥ 0 (agent accepts) and consistent with principal utility observed (p·w - c = agent UTIL)
+            max_util = u_vec.max()
+            if max_util < 0.0:
+                # increase cost estimates to allow utility≥0, raise costs on the best candidate to fix IR
+                best = u_vec.argmax()
+                gap = -max_util + 1e-6
+                cost_estimates[best] -= gap  # lower cost to increase utility
+                cost_estimates = np.maximum(cost_estimates, 0.0)
+                utilities[:, best] = expected_payoffs[:, best] - cost_estimates[best]
+            # for tightness, adapt cost to match agent utility = E[p·w]-cost, where agent util≥0, so cost ≤ E[p·w]
+            feasible_actions = np.where(u_vec >= -1e-8)[0]
+            if len(feasible_actions) > 0:
+                best = feasible_actions[np.argmax(u_vec[feasible_actions])]
+                # cost ≤ E[p·w]
+                max_cost_via_log = expected_payoffs[i, best]
+                cost_estimates[best] = min(cost_estimates[best], max_cost_via_log)
+                utilities[:, best] = expected_payoffs[:, best] - cost_estimates[best]
+
+    # For each rejected log, ensure max utility < 0 else increase costs
+    for i in range(num_logs):
+        if actions[i] == -1:
+            u_vec = utilities[i]
+            max_u = u_vec.max()
+            if max_u >= 0.0:
+                best = u_vec.argmax()
+                incr = max_u + 1e-6
+                cost_estimates[best] += incr
+                utilities[:, best] = expected_payoffs[:, best] - cost_estimates[best]
+
+    # Re-project costs non-negative after adjustments
+    cost_estimates = np.maximum(cost_estimates, 0.0)
+
+    # Step 4: Normalize probabilities (just for safety)
+    for k in range(n_clusters):
+        p_estimates[k] = np.clip(p_estimates[k], 0, 1)
+        s = p_estimates[k].sum()
+        if s > 0:
+            p_estimates[k] /= s
+        else:
+            p_estimates[k] = np.ones(payoff_dim)/payoff_dim
+
+    # Step 5: Return final [p, cost] matrix (each row)
+    agent_setting = np.hstack([p_estimates, cost_estimates[:, np.newaxis]])
+
+    return agent_setting
+```

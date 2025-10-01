@@ -1,0 +1,159 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting (action distribution over outcomes + cost)
+    that explains historical contract interactions, satisfying IC & IR.
+
+    Args:
+        v: (5,) np.ndarray - principal's reward vector for 5 outcomes
+        content: pd.DataFrame with columns ['Contract', 'Principal Utility', 'Agent Action']
+
+    Returns:
+        np.ndarray shaped (n_actions, 6):
+            Columns 0-4: outcome distributions (sum to 1)
+            Column 5: cost ≥ 0 for each action
+    """
+    contracts = np.vstack(content['Contract'].values)  # (L,5)
+    principal_utils = np.array(content['Principal Utility'])  # (L,)
+    agent_actions = np.array(content['Agent Action'])  # (L,)
+    L, m = contracts.shape
+
+    # Step 1: Basic feasibility conditions and preliminaries
+    # Separate accepted and rejected logs
+    accept_mask = (agent_actions == 1)
+    reject_mask = (agent_actions == -1)
+    contracts_accept = contracts[accept_mask]
+    principal_utils_accept = principal_utils[accept_mask]
+    contracts_reject = contracts[reject_mask]
+
+    # To explain data, choose candidate number of actions adaptively, e.g., 5-9, pick best by feasibility
+    # Because domain is 5 outcomes, start at 5 actions (one per outcome approx)
+    n_candidates_range = list(range(5, min(10, L)+1))
+
+    best_agent_setting = None
+    best_obj = np.inf
+
+    for n_actions in n_candidates_range:
+        # Step 2: Infer outcome distributions p_a via clustering on accepted contracts weighted by principal util
+        # We weigh the contract payments; principal util alone is less direct
+        # Instead cluster the contracts weighted by util to group similar agent acceptance behaviors
+
+        # Weight for each accepted contract proportional to principal util to favor better contracts
+        # Normalize utilities to [0,1] to avoid domination
+        if principal_utils_accept.max() > 0:
+            weights = (principal_utils_accept - principal_utils_accept.min()) + 1e-3
+            weights /= weights.sum()
+        else:
+            weights = np.ones_like(principal_utils_accept) / len(principal_utils_accept)
+
+        # Weighted KMeans init: replicate contracts by weight counts (approximation)
+        # Or simple KMeans unweighted for stability and speed
+        kmeans = KMeans(n_clusters=n_actions, random_state=42, n_init=10).fit(contracts_accept)
+
+        p_candidates = kmeans.cluster_centers_  # n_actions x m
+
+        # Normalize each p vector to sum to 1 since it's probs over outcomes
+        p_candidates = np.clip(p_candidates, 1e-8, None)
+        p_candidates /= p_candidates.sum(axis=1, keepdims=True)
+
+        # Step 3: Linear program formulation to find costs c≥0 for each action explaining acceptance / rejection
+
+        # Variables: c in R^n_actions (cost vector)
+        # Constraints:
+        # For accepted contract i with contract w_i, there exists action a_i s.t:
+        # p_a_i dot w_i - c_a_i ≥ 0 (IR)
+        # p_a_i dot w_i - c_a_i ≥ p_a dot w_i - c_a for all other a  (IC)
+        # Also for rejections j:
+        # max_a (p_a dot w_j - c_a) < 0
+
+        # To keep LP size reasonable:
+        # We'll assign accepted contracts to actions by max p_a dot w_i - guess c=0 initially, then fit c
+
+        # Step 3a: Assign accepted contracts to best matching action by max p_a * w_i
+        assign_accept = np.argmax(contracts_accept @ p_candidates.T, axis=1)
+
+        # Build LP matrices
+        # Decision vars: costs c_a ∈ R^n_actions
+        # Goal: minimize sum c_a^2 or total c_a (use sum c_a for LP simplification)
+        # Constraints linear in c_a
+
+        c_var_n = n_actions
+        A_ub = []
+        b_ub = []
+
+        # IR and IC constraints for accepted contracts:
+        for i, a_i in enumerate(assign_accept):
+            w_i = contracts_accept[i]
+            p_a_i = p_candidates[a_i]
+
+            # IR: p_a_i @ w_i - c_a_i ≥ 0  =>  -c_a_i ≥ -p_a_i @ w_i
+            a_row = np.zeros(c_var_n)
+            a_row[a_i] = -1
+            A_ub.append(a_row)
+            b_ub.append(-p_a_i @ w_i)
+
+            # IC: for all other a != a_i,
+            # p_a_i @ w_i - c_a_i ≥ p_a @ w_i - c_a
+            # rearranged: (c_a - c_a_i) ≥ (p_a - p_a_i) @ w_i
+            for a in range(n_actions):
+                if a == a_i:
+                    continue
+                diff = (p_candidates[a] - p_a_i) @ w_i
+                a_row = np.zeros(c_var_n)
+                a_row[a] = 1
+                a_row[a_i] = -1
+                A_ub.append(-a_row)  # -(c_a - c_ai) ≤ -diff  -> IC for LP inequality form: A_ub x ≤ b_ub
+                b_ub.append(-diff)
+
+        # Rejection constraints:
+        # For each rejected contract w_j:
+        # For all a: p_a dot w_j - c_a < 0
+        # To be safe, p_a dot w_j - c_a ≤ -ε < 0 with small ε to enforce strictness
+        epsilon = 1e-4
+        for w_j in contracts_reject:
+            for a in range(n_actions):
+                a_row = np.zeros(c_var_n)
+                a_row[a] = 1
+                A_ub.append(a_row)
+                b_ub.append((p_candidates[a] @ w_j) - epsilon)
+
+        A_ub = np.array(A_ub)
+        b_ub = np.array(b_ub)
+
+        bounds = [(0, None) for _ in range(n_actions)]  # c≥0
+
+        # Objective: minimize sum c_a (costs total)
+        c_obj = np.ones(c_var_n)
+
+        # LP Solve
+        lp_res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+
+        if lp_res.success:
+            c_sol = lp_res.x
+            # Verify rejection strictness: check for ~0 violation tolerance
+            rejs_ok = True
+            for w_j in contracts_reject:
+                max_util = np.max(p_candidates @ w_j - c_sol)
+                if max_util >= -epsilon*0.5:  # slight tolerance
+                    rejs_ok = False
+                    break
+            if not rejs_ok:
+                continue
+
+            # Store best by smallest objective (= sum costs)
+            if lp_res.fun < best_obj:
+                best_obj = lp_res.fun
+                best_agent_setting = np.hstack([p_candidates, c_sol.reshape(-1,1)])
+
+    # If no feasible found, fallback: uniform distribution with zero cost
+    if best_agent_setting is None:
+        p_uniform = np.ones((1,m)) / m
+        best_agent_setting = np.hstack([p_uniform, np.array([[0]])])
+
+    return best_agent_setting
+```

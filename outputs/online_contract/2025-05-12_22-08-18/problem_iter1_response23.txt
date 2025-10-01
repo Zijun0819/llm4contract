@@ -1,0 +1,242 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import DBSCAN
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix [p | c] from logs:
+      - Each row: an action with outcome distribution p (sum=1) and cost c>=0
+      - Consistent with agent acceptance (expected utility>=0) and rejection (<0)
+      - Must explain all logs (contract, principal util, agent action)
+
+    Approach:
+      1) Use accepted contracts to reveal candidate outcome dist/actions.
+      2) Cluster p's flexibly with DBSCAN to allow unknown number of actions.
+      3) For each cluster, estimate cost to meet IR constraints.
+      4) Enforce for every accepted contract there is an action with utility≥0
+         and for every rejected contract utility<0 for all actions (IC).
+      5) Solve a feasible LP adjusting costs upward to satisfy all constraints.
+      6) Return inferred [p|c] matrix.
+    """
+
+    m = v.size
+    logs_df = pd.DataFrame(content)
+
+    contracts = np.array(logs_df['Contract'].to_list())  # shape (L,m)
+    principal_utils = np.array(logs_df['Principal Utility'])
+    agent_actions = np.array(logs_df['Agent Action'])
+
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    # Step 1: For accepted logs, solve for p using linear eq for p,w and utility=agent cost unknown
+    # Use that agent utility = p @ contract - cost >=0 and principal util = v @ p - contract @ p
+    def fit_p_given_w_and_util(w, u):
+        # Solve system: sum p_i = 1, p @ v - p @ w = u
+        #   == p @ (v - w) = u
+        # w,v length m
+        # variables: p_i >=0
+        A = np.vstack([np.ones(m), v - w])
+        b = np.array([1.0, u])
+        bounds = [(0, 1)] * m
+        res = linprog(np.zeros(m), A_eq=A, b_eq=b, bounds=bounds, method='highs')
+        if res.success:
+            return res.x
+        else:
+            # fallback: nearest feasible probability vector by least squares projection
+            p0 = np.ones(m) / m
+            def loss(p):
+                return np.sum((p.clip(0) - p0)**2)
+            cons = ({'type': 'eq', 'fun': lambda p: np.sum(p) - 1},
+                    {'type': 'eq', 'fun': lambda p: p @ (v - w) - u})
+            bnds = [(0, 1)] * m
+            sol = minimize(loss, p0, bounds=bnds, constraints=cons, method='SLSQP', options={"ftol":1e-9})
+            if sol.success and np.all(sol.x >= -1e-8):
+                return np.clip(sol.x, 0, 1)
+            else:
+                return None
+
+    candidate_ps = []
+    for i in accepted_idx:
+        w = contracts[i]
+        u = principal_utils[i]
+        p = fit_p_given_w_and_util(w, u)
+        if p is not None:
+            candidate_ps.append(p)
+    candidate_ps = np.array(candidate_ps)
+    if len(candidate_ps) == 0:
+        # no accepted logs to infer p - fallback to uniform actions with zero cost
+        return np.hstack([np.ones((1, m)) / m, np.zeros((1, 1))])
+
+    # Step 2: Cluster candidate_ps via density-based DBSCAN to infer action count adaptively
+    clustering = DBSCAN(eps=0.2, min_samples=3).fit(candidate_ps)
+    labels = clustering.labels_
+    # filter noise points (label=-1) by assigning them to nearest cluster center
+    unique_labels = set(labels)
+    if -1 in unique_labels:
+        noise_idx = np.where(labels == -1)[0]
+        core_idx = np.where(labels != -1)[0]
+        core_centers = np.array([candidate_ps[core_idx][labels[core_idx] == lbl].mean(axis=0) for lbl in set(labels[core_idx])])
+        for ni in noise_idx:
+            distances = np.linalg.norm(core_centers - candidate_ps[ni], axis=1)
+            labels[ni] = sorted(set(labels[core_idx]))[np.argmin(distances)]
+    unique_labels = sorted(set(labels))
+    n_actions = len(unique_labels)
+    p_mat = np.zeros((n_actions, m))
+    for i, label in enumerate(unique_labels):
+        cluster_points = candidate_ps[labels == label]
+        p_mean = cluster_points.mean(axis=0)
+        p_mean = np.clip(p_mean, 0, None)
+        p_mean /= p_mean.sum() + 1e-12
+        p_mat[i] = p_mean
+
+    # Step 3: Initialize agent costs with minimal feasible cost from accepted logs assigned to clusters
+    # Assign each accepted log to nearest cluster by p-distribution dot contract
+    assigns = np.full(len(content), -1, dtype=int)
+    for i in accepted_idx:
+        w = contracts[i]
+        # agent expected utility p@w - c ≥ 0 => c ≤ p@w
+        expected_utils = p_mat @ w
+        assigns[i] = np.argmax(expected_utils)
+
+    # estimate initial costs per action from accepted logs assigned to that action
+    c_init = np.zeros(n_actions)
+    for a in range(n_actions):
+        assigned_idx = np.where(assigns == a)[0]
+        if len(assigned_idx) > 0:
+            vals = [p_mat[a] @ contracts[j] for j in assigned_idx]
+            c_init[a] = max(0., min(vals))  # min expected wage that supports acceptance
+        else:
+            c_init[a] = 0.
+
+    # Step 4: Formulate LP to find cost vector c≥0 consistent with all IC/IR constraints:
+    # accepted: ∃a s.t p_a @ w - c_a ≥ 0
+    # rejected: ∀a, p_a @ w - c_a < 0  ==>  c_a > p_a @ w
+    # We encode strict inequalities conservatively with small slack ε=1e-5
+
+    n = n_actions
+
+    # Variables: c vector length n
+    # Constraints per accepted log i:
+    # max_a [p_a@w_i - c_a] ≥ 0
+    # can be written as: ∃a with p_a@w_i - c_a ≥ 0
+    # Equivalent: For each accepted i, at least one a satisfies c_a ≤ p_a @ w_i
+
+    # Constraints per rejected log i:
+    # For all a: p_a@w_i - c_a < 0 -> c_a > p_a@w_i + ε
+
+    epsilon = 1e-5
+
+    A_ub = []
+    b_ub = []
+    # For all i in rejected logs and for all actions a:
+    #    c_a - p_a @ w_i ≥ ε -> -c_a ≤ -p_a @ w_i - ε
+    for i in rejected_idx:
+        w_i = contracts[i]
+        for a in range(n):
+            row = np.zeros(n)
+            row[a] = -1.0
+            A_ub.append(row)
+            b_ub.append(- (p_mat[a] @ w_i) - epsilon)
+
+    # For accepted logs, implement: ∃ a, c_a ≤ p_a @ w_i
+    # This is a disjunction of inequalities on variables c_a.
+    # To encode in LP, introduce binary variables for action choices -> MILP
+    # Since we want a LP only, approximate by enforcing:
+    # sum slack variables s_i ≥ 0 where s_i = min_a (c_a - p_a @ w_i) >= 0 reversed.
+
+    # Alternative approach: Require for each accepted i,
+    # min_a(c_a - p_a @ w_i) ≤ 0, reformulated as:
+    # For all i, min_a (c_a - p_a @ w_i) ≤ 0 => there exists a with c_a ≤ p_a @ w_i
+
+    # Approximate by ensuring for each accepted i:
+    # Define scalars m_i = min_a[c_a - p_a @ w_i] ≤ 0
+    # We add n copies of constraints c_a - p_a @ w_i ≤ s_i and minimize s_i ≤ 0
+    # But can't represent min in LP without extra variables. Instead:
+    # Enforce for each accepted i that:
+    # min_a (c_a - p_a @ w_i) ≤ 0
+    # => for all a: c_a - p_a @ w_i ≤ delta_i  (delta_i chosen ≤0)
+    #   and require min delta_i ≤ 0
+    # So dummy variables would be needed for exact encoding.
+
+    # For simplicity since costs c_a initialized reasonably,
+    # We impose c_a ≤ max_{i in accepted} p_a @ w_i (upper bound)
+    # and rely on feasible initial c_init to be enough.
+
+    # Assemble bounds: costs c_a ≥ 0
+    bounds = [(0, None) for _ in range(n)]
+
+    # Solve LP to minimize sum of costs (for numerical stability)
+    c_obj = np.ones(n)
+
+    # Add constraints c_a ≤ max p_a @ w_i  (we set upper bound by max acceptance)
+    max_wages = []
+    for a in range(n):
+        pays_a = [p_mat[a] @ contracts[i] for i in accepted_idx]
+        if len(pays_a) > 0:
+            max_wages.append(max(pays_a))
+        else:
+            max_wages.append(10 * np.max(v))  # loose upper bound
+    max_wages = np.array(max_wages)
+    # LP package linprog handles only <= constraints, so add c_a <= max_wages[a]
+    # which is c_a - s <= max_wage: rearranged c_a <= max_wage
+    for a in range(n):
+        row = np.zeros(n)
+        row[a] = 1
+        A_ub.append(row)
+        b_ub.append(max_wages[a])
+
+    # Convert to arrays
+    A_ub = np.array(A_ub)
+    b_ub = np.array(b_ub)
+
+    res = linprog(c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+
+    if res.success:
+        c_final = res.x
+    else:
+        # fallback with initial cost
+        c_final = c_init
+
+    # Clamp final costs to >=0 and no more than maximal principal utility plus margin
+    c_final = np.clip(c_final, 0, np.max(principal_utils) + 5)
+
+    # Final step: Validate acceptance and rejection constraints, fix if necessary
+    # Fix accepted: for each accepted i, require ∃ a: p_a @ w_i - c_a >= 0
+    # Fix rejected: for each rejected i, ∀ a: p_a @ w_i - c_a < 0
+    # If violations, increase related costs by small margin
+
+    def violation_counts(c):
+        acc_violations = 0
+        rej_violations = 0
+        for i in accepted_idx:
+            if np.max(p_mat @ contracts[i] - c) < -epsilon:
+                acc_violations += 1
+        for i in rejected_idx:
+            if np.any(p_mat @ contracts[i] - c > -epsilon):
+                rej_violations += 1
+        return acc_violations, rej_violations
+
+    acc_vio, rej_vio = violation_counts(c_final)
+    attempts = 0
+    incr = 1e-3
+    while (acc_vio > 0 or rej_vio > 0) and attempts < 10:
+        # Adjust costs for violated rejected: increase cost on violator actions by margin
+        for i in rejected_idx:
+            for a in range(n):
+                util = p_mat[a] @ contracts[i] - c_final[a]
+                if util > -epsilon:
+                    c_final[a] = max(c_final[a], p_mat[a] @ contracts[i] + incr)
+        # Adjust costs for violated accepted (very rare): lower costs where possible
+        for i in accepted_idx:
+            if np.max(p_mat @ contracts[i] - c_final) < -epsilon:
+                a_best = np.argmax(p_mat @ contracts[i] - c_final)
+                c_final[a_best] = max(0, p_mat[a_best] @ contracts[i])  # not increase cost
+        acc_vio, rej_vio = violation_counts(c_final)
+        attempts += 1
+
+    agent_setting = np.hstack([p_mat, c_final[:, None]])
+    return agent_setting
+```

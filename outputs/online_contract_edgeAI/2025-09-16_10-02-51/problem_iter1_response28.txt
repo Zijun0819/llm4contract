@@ -1,0 +1,74 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances
+
+def agent_solver(v, content):
+    np.random.seed(42)
+    contracts = [log['Contract'] for log in content]
+    actions = [log['Agent Action'] for log in content]
+    accepted_idx = [i for i, a in enumerate(actions) if a == 1]
+    rejected_idx = [i for i, a in enumerate(actions) if a == -1]
+    accepted_contracts = [contracts[i] for i in accepted_idx]
+    
+    def compute_agent_util(contract, p, c):
+        return np.dot(p, contract) - c
+    
+    def cluster_p_vectors(contracts, n_clusters):
+        all_p = []
+        for contract in contracts:
+            c_vec = np.array(contract)
+            constraints = [{'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
+                           {'type': 'ineq', 'fun': lambda x: x}]
+            res = minimize(lambda x: np.dot(x, v) - np.dot(x, c_vec), x0=np.ones(12)/12, constraints=constraints, bounds=[(0,1)]*12)
+            if res.success:
+                all_p.append(res.x)
+        if len(all_p) == 0:
+            return np.ones((1,12))/12
+        all_p = np.array(all_p)
+        if len(all_p) > n_clusters:
+            kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(all_p)
+            return kmeans.cluster_centers_
+        else:
+            return all_p
+    
+    n_actions = min(5, len(accepted_contracts))
+    if n_actions == 0:
+        n_actions = 1
+    p_centers = cluster_p_vectors(accepted_contracts, n_actions)
+    n_actions = p_centers.shape[0]
+    
+    assignment = {}
+    for idx in accepted_idx:
+        contract = contracts[idx]
+        utils = [np.dot(p, contract) for p in p_centers]
+        assignment[idx] = np.argmax(utils)
+    
+    cost_lower_bounds = np.zeros(n_actions)
+    for a in range(n_actions):
+        assigned_contracts = [contracts[idx] for idx in assignment.keys() if assignment[idx] == a]
+        if assigned_contracts:
+            min_util = min(np.dot(p_centers[a], c) for c in assigned_contracts)
+            cost_lower_bounds[a] = min_util
+        else:
+            cost_lower_bounds[a] = 0
+    
+    cost_upper_bounds = np.full(n_actions, np.inf)
+    for idx in rejected_idx:
+        contract = contracts[idx]
+        utils = [np.dot(p, contract) for p in p_centers]
+        for a in range(n_actions):
+            if utils[a] < cost_upper_bounds[a]:
+                cost_upper_bounds[a] = utils[a]
+    
+    final_costs = np.zeros(n_actions)
+    for a in range(n_actions):
+        if cost_lower_bounds[a] <= cost_upper_bounds[a]:
+            final_costs[a] = cost_lower_bounds[a]
+        else:
+            final_costs[a] = (cost_lower_bounds[a] + cost_upper_bounds[a]) / 2
+    
+    agent_setting = np.hstack([p_centers, final_costs.reshape(-1,1)])
+    return agent_setting
+```

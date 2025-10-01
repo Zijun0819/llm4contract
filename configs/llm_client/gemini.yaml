@@ -1,0 +1,5 @@
+_target_: utils.llm_clients.gemini.GeminiClient
+
+model: gemini-2.0-flash # LLM model
+temperature: 0.5  # temperature for chat completion
+api_key: ${oc.env:GEMINI_API_KEY,null}

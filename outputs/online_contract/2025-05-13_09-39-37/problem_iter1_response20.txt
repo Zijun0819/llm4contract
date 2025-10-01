@@ -1,0 +1,142 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import DBSCAN
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer agent setting (actions as outcome distributions + costs)
+    consistent with historical contract logs under IR and IC constraints.
+
+    Args:
+        v: Principal's value vector for 5 outcomes, shape (5,)
+        content: DataFrame with columns ['Contract', 'Principal Utility', 'Agent Action']
+            - Contract: list of 5 payments
+            - Principal Utility: float >=0 if accepted else 0
+            - Agent Action: 1 (accept) or -1 (reject)
+
+    Returns:
+        agent_setting: ndarray of shape (n_actions, 6)
+            Columns 0-4: outcome distributions (sum to 1)
+            Column 5: non-negative cost of action
+    """
+    contracts = np.vstack(content['Contract'].to_numpy())  # shape (L,5)
+    principal_utils = content['Principal Utility'].to_numpy()
+    agent_actions = content['Agent Action'].to_numpy()
+    L, m = contracts.shape
+
+    # Step 1: Extract accepted and rejected indices
+    accept_idx = np.where(agent_actions == 1)[0]
+    reject_idx = np.where(agent_actions == -1)[0]
+
+    # Step 2: For accepted contracts, infer agent expected utility u_agent ≈ expected wage - cost
+    # Given principal utility = v*p - w*p, agent utility ≥ 0 => w*p - cost ≥ 0
+    # We don't observe cost or p directly, so we infer p by assuming agent picks p to explain acceptance.
+
+    # We'll model that each accepted contract reflects some underlying action p with cost c,
+    # where agent acceptance means w*p - c ≥ 0 (IR), and principal utility = v*p - w*p
+
+    # Step 3: Construct candidate outcome distributions for accepted logs via LP
+    # For each accepted contract, solve LP:
+    # variables: p (prob dist over 5 outcomes)
+    # constraints: sum p = 1, p >=0, principal utility = v*p - w*p (known),
+    # agent utility ≥ 0 => w*p - c ≥ 0, but c unknown --> temporarily ignore c
+
+    # Instead, we infer p by:
+    # max p*(v - w) = principal utility (from log)
+    # with sum p=1, p≥0
+
+    candidate_ps = []
+    for i in accept_idx:
+        w = contracts[i]
+        u_p = principal_utils[i]
+        c = v - w  # vector for principal utility per outcome minus wage
+
+        # Solve LP: find p that maximizes p*(v - w) == u_p
+        # Constraints: sum p=1, p≥0, p*(v - w) = u_p
+
+        # Since p*(c) = u_p is equality, we set two equality constraints:
+        # sum p =1 and p*c = u_p
+        A_eq = np.vstack([np.ones(m), c])
+        b_eq = np.array([1.0, u_p])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            candidate_ps.append(res.x)
+        else:
+            # fallback: uniform distribution if LP fails
+            candidate_ps.append(np.full(m, 1/m))
+
+    candidate_ps = np.vstack(candidate_ps) if candidate_ps else np.zeros((0, m))
+
+    # Step 4: Cluster candidate_ps to find representative actions
+    # Use DBSCAN to adaptively find number of clusters (actions) based on density
+    if len(candidate_ps) == 0:
+        # No accepted logs => trivial agent setting: single uniform action with zero cost
+        agent_setting = np.hstack([np.full((1, m), 1 / m), np.array([[0]])])
+        return agent_setting
+
+    clustering = DBSCAN(eps=0.15, min_samples=3).fit(candidate_ps)
+    labels = clustering.labels_
+    unique_labels = set(labels)
+    if -1 in unique_labels:
+        unique_labels.remove(-1)  # remove noise label
+
+    if len(unique_labels) == 0:
+        # All points noise, choose one cluster with all points
+        unique_labels = {0}
+        labels = np.zeros(len(candidate_ps), dtype=int)
+
+    n_actions = len(unique_labels)
+    p_actions = []
+    for lbl in unique_labels:
+        cluster_ps = candidate_ps[labels == lbl]
+        centroid = cluster_ps.mean(axis=0)
+        centroid /= centroid.sum()
+        p_actions.append(centroid)
+
+    p_actions = np.vstack(p_actions)  # shape (n_actions, 5)
+
+    # Step 5: Infer costs per action from accepted contracts assigned to cluster
+    # cost = expected wage - agent utility (≥0)
+    # agent utility unknown; but IR implies agent utility ≥ 0
+    # We use minimal cost to explain acceptance: cost ≤ w*p
+
+    costs = np.zeros(n_actions)
+    for i, p in enumerate(p_actions):
+        indices = [idx for j, idx in enumerate(accept_idx) if labels[j] == list(unique_labels)[i]]
+        if len(indices) == 0:
+            # No assigned accepted logs => cost = 0 minimal
+            costs[i] = 0.0
+            continue
+        cost_candidates = []
+        for idx_ in indices:
+            w = contracts[idx_]
+            # agent utility ≥0 => cost ≤ w*p
+            cost_candidates.append(p @ w)
+        costs[i] = max(0, min(cost_candidates))  # conservative minimal cost
+
+    # Step 6: Check rejection logs: agent rejects means no action yields agent utility ≥0
+    # For each rejection contract w, ensure max_a w*p_a - cost_a < 0 (IC)
+    # If violated, increase cost_a accordingly
+
+    if len(reject_idx) > 0:
+        w_rejs = contracts[reject_idx]  # shape (n_rej,5)
+        for idx_w, w in enumerate(w_rejs):
+            utilities = p_actions @ w - costs  # agent utils for each action
+            max_util = np.max(utilities)
+            if max_util >= 0:
+                # Increase cost of max util action to just below w*p
+                a_max = np.argmax(utilities)
+                costs[a_max] = p_actions[a_max] @ w + 1e-6  # tiny epsilon to enforce rejection
+
+    # Step 7: Normalize p_actions (outcome distributions) just in case and ensure non-neg costs
+    p_actions = np.clip(p_actions, 0, None)
+    p_actions /= p_actions.sum(axis=1, keepdims=True)
+    costs = np.clip(costs, 0, None)
+
+    agent_setting = np.hstack([p_actions, costs[:, np.newaxis]])
+    return agent_setting
+```

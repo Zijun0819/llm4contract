@@ -1,0 +1,167 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = len(v)
+    n_logs = len(content)
+    
+    # Extract data
+    contracts = np.array([log['Contract'] for log in content])
+    utilities = np.array([log['Principal Utility'] for log in content])
+    actions = np.array([log['Agent Action'] for log in content])
+    
+    accepted_idx = np.where(actions == 1)[0]
+    rejected_idx = np.where(actions == -1)[0]
+    
+    # Step 1: Generate candidate probability distributions
+    candidates = []
+    
+    # Add uniform distribution
+    candidates.append(np.ones(n_outcomes) / n_outcomes)
+    
+    # Add extreme distributions (focused on single outcomes)
+    for i in range(n_outcomes):
+        p = np.zeros(n_outcomes)
+        p[i] = 1.0
+        candidates.append(p)
+    
+    # Add distributions based on value ranking
+    sorted_idx = np.argsort(v)
+    for alpha in [0.1, 0.3, 0.5, 0.7, 0.9]:
+        p = np.zeros(n_outcomes)
+        p[sorted_idx[-3:]] = alpha / 3
+        p[sorted_idx[:-3]] = (1 - alpha) / (n_outcomes - 3) if n_outcomes > 3 else 0
+        candidates.append(p)
+    
+    # Add random Dirichlet samples
+    np.random.seed(42)
+    for _ in range(10):
+        p = np.random.dirichlet(np.ones(n_outcomes))
+        candidates.append(p)
+    
+    # Step 2: Solve for distributions from accepted contracts using dual approach
+    for idx in accepted_idx[:min(20, len(accepted_idx))]:
+        w = contracts[idx]
+        u_principal = utilities[idx]
+        
+        # Solve dual problem: maximize sum of probabilities subject to constraints
+        def objective(p):
+            return -np.sum(p)  # Minimize negative sum = maximize sum
+        
+        def constraint_prob_sum(p):
+            return np.sum(p) - 1.0  # Sum equals 1
+        
+        def constraint_utility(p):
+            return np.dot(p, v) - np.dot(p, w) - u_principal  # Agent gets remaining utility
+        
+        constraints = [
+            {'type': 'eq', 'fun': constraint_prob_sum},
+            {'type': 'eq', 'fun': constraint_utility}
+        ]
+        
+        bounds = [(0, 1) for _ in range(n_outcomes)]
+        
+        result = minimize(objective, np.ones(n_outcomes) / n_outcomes, 
+                         method='SLSQP', bounds=bounds, constraints=constraints)
+        
+        if result.success and np.all(result.x >= 0) and abs(np.sum(result.x) - 1) < 1e-6:
+            candidates.append(result.x)
+    
+    candidates = np.array(candidates)
+    
+    # Step 3: Use PCA to reduce dimensionality and cluster
+    if len(candidates) > 15:
+        pca = PCA(n_components=min(8, len(candidates)-1))
+        candidates_reduced = pca.fit_transform(candidates)
+        n_clusters = min(8, len(candidates))
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        cluster_labels = kmeans.fit_predict(candidates_reduced)
+        
+        # Get representative from each cluster
+        final_candidates = []
+        for i in range(n_clusters):
+            cluster_mask = cluster_labels == i
+            if np.any(cluster_mask):
+                cluster_center = np.mean(candidates[cluster_mask], axis=0)
+                cluster_center = cluster_center / np.sum(cluster_center)  # Renormalize
+                final_candidates.append(cluster_center)
+        
+        p_actions = np.array(final_candidates)
+    else:
+        p_actions = candidates
+    
+    n_actions = len(p_actions)
+    
+    # Step 4: Compute costs using robust optimization
+    costs = np.zeros(n_actions)
+    
+    for a in range(n_actions):
+        p = p_actions[a]
+        
+        # Find minimum cost that satisfies all constraints
+        min_cost = 0.0
+        
+        # IR constraint from accepted contracts
+        for idx in accepted_idx:
+            w = contracts[idx]
+            agent_utility = np.dot(p, w) - min_cost
+            if agent_utility < 0:
+                min_cost = np.dot(p, w)
+        
+        # IC constraint from rejected contracts  
+        max_rejected_utility = 0.0
+        for idx in rejected_idx:
+            w = contracts[idx]
+            utility = np.dot(p, w)
+            max_rejected_utility = max(max_rejected_utility, utility)
+        
+        # Cost must be at least as high as maximum rejected utility
+        min_cost = max(min_cost, max_rejected_utility)
+        
+        # Additional robustness: ensure positive margin
+        margin = 1e-6
+        costs[a] = min_cost + margin
+    
+    # Step 5: Validation and adjustment
+    valid_actions = []
+    valid_costs = []
+    
+    for a in range(n_actions):
+        p = p_actions[a]
+        c = costs[a]
+        
+        # Check if this action explains the data reasonably well
+        correct_predictions = 0
+        total_predictions = 0
+        
+        for i, log in enumerate(content):
+            w = log['Contract']
+            actual_action = log['Agent Action']
+            
+            # Predict what agent would do with this action
+            utility = np.dot(p, w) - c
+            predicted_action = 1 if utility >= 0 else -1
+            
+            if predicted_action == actual_action:
+                correct_predictions += 1
+            total_predictions += 1
+        
+        # Keep actions that predict reasonably well
+        if total_predictions == 0 or correct_predictions / total_predictions >= 0.3:
+            valid_actions.append(p)
+            valid_costs.append(c)
+    
+    # Ensure we have at least some actions
+    if len(valid_actions) == 0:
+        valid_actions = [p_actions[0]]
+        valid_costs = [costs[0]]
+    
+    # Step 6: Final assembly
+    agent_setting = np.column_stack([np.array(valid_actions), np.array(valid_costs)])
+    
+    return agent_setting
+```

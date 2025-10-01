@@ -1,0 +1,64 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize, Bounds
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances_argmin_min
+
+
+def agent_solver_v2(v: np.ndarray, content: list) -> np.ndarray:
+    n_actions = 12
+    m_outcomes = v.shape[0]
+    L = len(content)
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    def solve_optimal_p(w: np.ndarray, u: float) -> np.ndarray:
+        m = len(w)
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, u])
+        bounds = Bounds(0, 1)
+        res = linprog(w, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+    
+    accepted_ps = []
+    for log in accepted_logs:
+        p_opt = solve_optimal_p(log['Contract'], log['Principal Utility'])
+        if p_opt is not None:
+            accepted_ps.append(p_opt)
+    
+    if len(accepted_ps) < n_actions:
+        n_actions = max(3, len(accepted_ps))
+    
+    accepted_ps_arr = np.array(accepted_ps)
+    if len(accepted_ps_arr) > 0:
+        kmeans = KMeans(n_clusters=n_actions, random_state=42, n_init=10).fit(accepted_ps_arr)
+        p_centers = kmeans.cluster_centers_
+    else:
+        p_centers = np.eye(m_outcomes)
+        n_actions = m_outcomes
+    
+    action_assignment = np.zeros(L, dtype=int)
+    for i, log in enumerate(content):
+        if log['Agent Action'] == 1:
+            w_vec = np.array(log['Contract'])
+            utilities = p_centers.dot(w_vec)
+            action_assignment[i] = np.argmax(utilities)
+    
+    cost_estimates = np.zeros(n_actions)
+    for a in range(n_actions):
+        assigned_indices = np.where(action_assignment == a)[0]
+        if len(assigned_indices) > 0:
+            wage_mat = np.array([content[i]['Contract'] for i in assigned_indices])
+            min_wages = np.min(wage_mat, axis=0)
+            cost_estimates[a] = p_centers[a].dot(min_wages)
+    
+    if rejected_logs:
+        rej_wages = np.array([log['Contract'] for log in rejected_logs]).T
+        rej_utility = p_centers.dot(rej_wages)
+        max_rej_util = np.max(rej_utility, axis=1)
+        cost_estimates = np.maximum(cost_estimates, max_rej_util)
+    
+    agent_setting_matrix = np.hstack([p_centers, cost_estimates.reshape(-1, 1)])
+    return agent_setting_matrix
+```

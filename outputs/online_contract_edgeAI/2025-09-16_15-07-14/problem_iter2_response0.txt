@@ -1,0 +1,94 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.mixture import GaussianMixture
+import warnings
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    warnings.filterwarnings('ignore')
+    
+    def create_new_action(w, current_settings):
+        m = len(w)
+        A = np.vstack([np.ones(m), w])
+        b = [1.0, 0.0]
+        bounds = [(0.0, 1.0)] * m
+        res = linprog(-w, A_eq=A, b_eq=b, bounds=bounds, method='highs')
+        if res.success:
+            p = np.maximum(res.x, 1e-10)
+            p /= np.sum(p)
+            c = p @ w + 1e-10
+            return np.hstack([p, [c]])
+        else:
+            p = np.ones(m) / m
+            c = p @ w + 1e-10
+            return np.hstack([p, [c]])
+    
+    def adjust_costs(settings, logs_df):
+        n_actions = settings.shape[0]
+        costs = settings[:, -1].copy()
+        
+        for _, row in logs_df.iterrows():
+            w = np.array(row['Contract'])
+            if row['Agent Action'] == 1:
+                for a in range(n_actions):
+                    utility = settings[a, :-1] @ w - costs[a]
+                    if utility < -1e-10:
+                        costs[a] = settings[a, :-1] @ w + 1e-10
+            else:
+                for a in range(n_actions):
+                    utility = settings[a, :-1] @ w - costs[a]
+                    if utility > -1e-10:
+                        costs[a] = max(costs[a], settings[a, :-1] @ w + 1e-10)
+        return costs
+    
+    m_outcomes = len(v)
+    logs_df = pd.DataFrame(content)
+    
+    accepted = logs_df[logs_df['Agent Action'] == 1]
+    if accepted.empty:
+        return np.hstack([np.eye(m_outcomes), np.zeros((m_outcomes, 1))])
+    
+    try:
+        X = np.array(accepted['Contract'].tolist())
+        n_candidates = min(max(int(np.sqrt(len(X))), 2), 20)
+        gmm = GaussianMixture(n_components=n_candidates, covariance_type='diag', random_state=0, n_init=10)
+        gmm.fit(X)
+        p_centers = gmm.means_
+        costs = np.zeros(n_candidates)
+        
+        for a in range(n_candidates):
+            mask = (gmm.predict(X) == a)
+            if np.any(mask):
+                w_mat = X[mask].T
+                utilities = p_centers[a] @ w_mat
+                costs[a] = np.min(utilities) - 1e-10
+        
+        agent_setting = np.hstack([p_centers, costs.reshape(-1, 1)])
+        
+        for _ in range(100):
+            agent_setting[:, -1] = adjust_costs(agent_setting, logs_df)
+            
+            violations = []
+            for _, row in logs_df.iterrows():
+                w = np.array(row['Contract'])
+                utils = agent_setting[:, :-1] @ w - agent_setting[:, -1]
+                max_util = np.max(utils)
+                pred_action = 1 if max_util >= -1e-10 else -1
+                if pred_action != row['Agent Action']:
+                    violations.append((w, row['Agent Action']))
+            
+            if not violations:
+                break
+                
+            for w, action in violations[:5]:
+                if action == 1:
+                    new_action = create_new_action(w, agent_setting)
+                    agent_setting = np.vstack([agent_setting, new_action])
+        
+        agent_setting[:, -1] = adjust_costs(agent_setting, logs_df)
+        return agent_setting
+        
+    except:
+        return np.hstack([np.eye(m_outcomes), np.zeros((m_outcomes, 1))])
+```

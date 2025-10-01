@@ -1,0 +1,1 @@
+Cluster contracts by normalized outcome patterns using adaptive DBSCAN with elbow method; enforce strict joint IR/IC LP constraints including rejection margins; iteratively refine cost vectors globally; normalize probabilities post-clustering; assign noisy logs via nearest cluster; integrate principal utility bounds early.

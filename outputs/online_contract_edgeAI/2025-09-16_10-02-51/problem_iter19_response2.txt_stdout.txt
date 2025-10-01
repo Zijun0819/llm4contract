@@ -1,0 +1,65 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_slsqp_py.py:435: RuntimeWarning: Values in x were outside bounds during a minimize step, clipping to bounds
+  fx = wrapped_fun(x)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_slsqp_py.py:439: RuntimeWarning: Values in x were outside bounds during a minimize step, clipping to bounds
+  g = append(wrapped_grad(x), 0.0)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_slsqp_py.py:499: RuntimeWarning: Values in x were outside bounds during a minimize step, clipping to bounds
+  a_ieq = vstack([con['jac'](x, *con['args'])
+The running time is：0.7954 seconds
+The inferred contract is [[8.91521143e-01 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 1.08478857e-01 0.00000000e+00
+  5.81342704e-05]
+ [0.00000000e+00 9.97164711e-01 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 2.83528874e-03
+  1.08836543e-05]]
+→ Best principal utility: 0.0003363007405817398
+→ Inferred agent&principal utility:    6.617238543894647e-06 0.0006127719263775879
+→ Agent and principal score:    0 6.617238543794629e-06
+[*] Instance 0: 6.617238543794629e-06
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_slsqp_py.py:435: RuntimeWarning: Values in x were outside bounds during a minimize step, clipping to bounds
+  fx = wrapped_fun(x)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_slsqp_py.py:439: RuntimeWarning: Values in x were outside bounds during a minimize step, clipping to bounds
+  g = append(wrapped_grad(x), 0.0)
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_slsqp_py.py:499: RuntimeWarning: Values in x were outside bounds during a minimize step, clipping to bounds
+  a_ieq = vstack([con['jac'](x, *con['args'])
+The running time is：0.1000 seconds
+The inferred contract is [[9.29769222e-01 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  7.02307780e-02 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  1.26044518e-05]
+ [8.88206666e-01 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 1.11793334e-01 0.00000000e+00
+  0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+  1.32644911e-05]]
+→ Best principal utility: 0.0003205145683266294
+→ Inferred agent&principal utility:    1.4002011522179438e-06 0.00054934505910324
+→ Agent and principal score:    0 7.004410581814256e-05
+[*] Instance 1: 7.004410581814256e-05
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.1108 seconds
+The inferred contract is [[0.9232832  0.         0.         0.         0.         0.
+  0.         0.0767168  0.         0.         0.         0.
+  0.00103177]
+ [0.97546297 0.         0.         0.         0.         0.
+  0.         0.         0.         0.         0.         0.02453703
+  0.00101322]]
+→ Best principal utility: -inf
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 162, in <module>
+    obj, _ = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 109, in evaluate_llm
+    agent_u = np.dot(p, inferred_contract) - c
+TypeError: unsupported operand type(s) for *: 'float' and 'NoneType'

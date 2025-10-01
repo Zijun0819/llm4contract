@@ -1,0 +1,164 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (n_actions x 6) with:
+    - first 5 columns: outcome distributions (sum to 1)
+    - last column: non-negative action cost
+    that explains the historical logs (contracts, principal utilities, agent actions)
+    under agent's IR (acceptance) and IC (rejection) constraints.
+
+    Strategy:
+    1. Extract accepted contracts, estimate outcome distributions p approximating
+       agent expected utility constraints via inverse optimization.
+    2. Cluster these p vectors to get plausible discrete actions.
+    3. For each action, deduce minimal cost to satisfy IR for accepted logs.
+    4. For rejection logs, impose IC constraints to ensure no action yields ≥0 utility.
+    5. Formulate and solve LP to find costs that satisfy all IR/IC constraints.
+    """
+
+    m = v.size
+    L = len(content)
+
+    # Parse logs into arrays
+    contracts = np.array([log['Contract'] for log in content])  # shape (L, 5)
+    principal_utils = np.array([log['Principal Utility'] for log in content])
+    agent_actions = np.array([log['Agent Action'] for log in content])
+
+    # Separate accepted and rejected logs
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    # Step 1: For each accepted log, find a feasible p (prob dist) that satisfies:
+    # p·w >= c (agent utility ≥ 0), where c unknown but ≤ principal utility (≥ 0)
+    # Here we approximate p by solving LP:
+    # max p·v (proxy), subject to p·w >= 0, sum p =1, p≥0 to get plausible p's.
+    # Because agent's cost unknown, we only know agent utility ≥0 ⇒ p·w ≥ cost ≥ 0
+    # We relax to p·w ≥ 0 for accepted contracts.
+
+    def find_p_for_accepted(w):
+        # maximize expected principal value p·v (proxy),
+        # s.t. p·w ≥ 0, sum p=1, p≥0
+        c_obj = -v  # maximize p·v <=> minimize -p·v
+        A_ub = np.array([-w])  # -p·w ≤ 0 ⇒ p·w ≥ 0
+        b_ub = np.array([0])
+        A_eq = np.ones((1, m))
+        b_eq = np.array([1])
+        bounds = [(0, 1)] * m
+        res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            return res.x
+        else:
+            # fallback: uniform distribution (should rarely occur)
+            return np.ones(m) / m
+
+    accepted_ps = np.array([find_p_for_accepted(contracts[i]) for i in accepted_idx])
+
+    # Step 2: Cluster accepted_ps into n_actions groups
+    # Heuristic: choose number of clusters based on accepted samples count (between 3 and 10)
+    n_candidates = min(max(3, len(accepted_ps) // 10), 10)
+    if len(accepted_ps) < n_candidates:
+        n_candidates = max(1, len(accepted_ps))
+
+    if n_candidates == 1:
+        p_clusters = accepted_ps
+    else:
+        clustering = AgglomerativeClustering(n_clusters=n_candidates).fit(accepted_ps)
+        labels = clustering.labels_
+        # Compute cluster centers as normalized means
+        p_clusters = np.zeros((n_candidates, m))
+        for k in range(n_candidates):
+            members = accepted_ps[labels == k]
+            center = np.mean(members, axis=0)
+            # renormalize (to handle numeric errors)
+            center = np.clip(center, 0, None)
+            center /= center.sum()
+            p_clusters[k] = center
+
+    # Step 3: For each accepted log, assign to closest cluster by Euclidean distance on p
+    assigned_actions = np.full(L, -1, dtype=int)
+    for i in accepted_idx:
+        p_dist = np.linalg.norm(p_clusters - find_p_for_accepted(contracts[i]), axis=1)
+        assigned_actions[i] = np.argmin(p_dist)
+
+    # Step 4: Build IR and IC constraints to solve for costs c for each action
+    # Variables: c vector of length n_candidates, costs ≥ 0
+
+    # IR constraints (for acceptance logs):
+    # For each accepted log i assigned to action a:
+    # p_a · w_i - c_a ≥ 0  ⇒  c_a ≤ p_a · w_i
+    # Keep all these upper bounds on c_a
+
+    # IC constraints (for rejection logs):
+    # For each rejected log j:
+    # For all actions a:
+    # p_a · w_j - c_a < 0 ⇒ c_a > p_a · w_j
+    # So cost c_a must exceed max over rejected logs of p_a·w_j
+
+    # We will formulate these as linear inequalities:
+    # For each action a:
+    # c_a ≤ min_{i assigned a} p_a·w_i (IR upper bound)
+    # c_a > max_{j in rejected} p_a·w_j (IC lower bound)
+
+    # If no accepted log assigned to action a, IR upper bound = +inf (no constraint)
+    # If no rejected logs, IC lower bound = -inf (no constraint)
+
+    c_upper = np.full(n_candidates, np.inf)
+    for a in range(n_candidates):
+        idx_accepted_a = [i for i in accepted_idx if assigned_actions[i] == a]
+        if idx_accepted_a:
+            vals = [p_clusters[a] @ contracts[i] for i in idx_accepted_a]
+            c_upper[a] = min(vals)
+        else:
+            # No accepted logs assigned → no IR upper bound
+            c_upper[a] = np.inf
+
+    if len(rejected_idx) > 0:
+        c_lower = np.full(n_candidates, -np.inf)
+        for a in range(n_candidates):
+            vals = [p_clusters[a] @ contracts[j] for j in rejected_idx]
+            c_lower[a] = max(vals)
+    else:
+        c_lower = np.full(n_candidates, -np.inf)
+
+    # We want to find c ≥ 0 such that:
+    # c_lower < c ≤ c_upper, with inequalities element-wise.
+
+    # Because strict inequalities are not supported in LP, relax:
+    # c ≥ c_lower + eps, where eps is small positive number to ensure strictness.
+    eps = 1e-5
+
+    # Define feasible lower bounds: max between eps and c_lower + eps
+    c_lower_feasible = np.maximum(eps, c_lower + eps)
+
+    # Final feasible c must satisfy:
+    # c ≥ c_lower_feasible
+    # c ≤ c_upper
+    # c ≥ 0   (already ensured by c_lower_feasible ≥ eps > 0)
+
+    # Check feasibility:
+    feasible_lower = c_lower_feasible
+    feasible_upper = c_upper
+
+    # If any lower bound > upper bound, no feasible cost vector exists.
+    for a in range(n_candidates):
+        if feasible_lower[a] > feasible_upper[a]:
+            # Relax by setting c_upper[a] = feasible_lower[a] + margin
+            feasible_upper[a] = feasible_lower[a] + 1.0
+
+    # Step 5: Choose costs c in feasible intervals that maximize minimal principal utility,
+    # i.e. maximize min_{accepted i} p_a·w_i - c_a for assigned a,
+    # but here simply pick midpoint for stability.
+
+    c_final = (feasible_lower + feasible_upper) / 2
+
+    # Step 6: Assemble final agent setting matrix: [p_clusters, c_final]
+    agent_setting = np.hstack([p_clusters, c_final.reshape(-1, 1)])
+
+    return agent_setting
+```

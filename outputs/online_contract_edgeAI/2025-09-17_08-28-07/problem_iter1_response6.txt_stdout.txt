@@ -1,0 +1,15 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+The running time is：0.0905 seconds
+→ Best principal utility: -inf
+→ The corresponding best action is: None
+→ The corresponding agent utility is: None
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 170, in <module>
+    obj, _ = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 113, in evaluate_llm
+    agent_u = p.dot(inferred_contract) - c
+TypeError: unsupported operand type(s) for *: 'float' and 'NoneType'

@@ -1,0 +1,1 @@
+Focus on tight Bayesian GMM clustering of accepted logs for initial cost bounds. Use lower bounds and epsilon-adjusted IR to handle rejections. Simplify objective to strictly enforce constraints; optimize for stability with minimal penalties.

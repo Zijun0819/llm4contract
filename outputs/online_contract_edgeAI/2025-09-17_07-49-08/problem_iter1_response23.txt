@@ -1,0 +1,57 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import normalize
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_candidates = 5
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def solve_lp(w: np.ndarray, u: float) -> np.ndarray | None:
+        A_eq = [np.ones(m_outcomes), v - w]
+        b_eq = [1.0, u]
+        bounds = [(0, 1)] * m_outcomes
+        result = linprog(np.zeros(m_outcomes), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if result.success:
+            return result.x
+        else:
+            return None
+
+    accepted_ps = []
+    accepted_contracts = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w = np.array(log['Contract'])
+            u = log['Principal Utility']
+            p = solve_lp(w, u)
+            if p is not None:
+                accepted_ps.append(p)
+                accepted_contracts.append(w)
+
+    if not accepted_ps:
+        return np.zeros((1, m_outcomes + 1))
+
+    accepted_ps = np.array(accepted_ps)
+    accepted_contracts = np.array(accepted_contracts)
+
+    kmeans = KMeans(n_clusters=n_candidates, random_state=0, n_init=10)
+    kmeans.fit(accepted_ps)
+    p0 = kmeans.cluster_centers_
+
+    costs = np.zeros(n_candidates)
+    for i in range(n_candidates):
+        cluster_indices = np.where(kmeans.labels_ == i)[0]
+        if cluster_indices.size > 0:
+            min_utility = np.inf
+            for idx in cluster_indices:
+                utility = np.dot(p0[i], accepted_contracts[idx])
+                min_utility = min(min_utility, utility)
+            costs[i] = max(0, min_utility)
+        else:
+            costs[i] = 0
+
+    agent_setting = np.hstack([p0, costs[:, np.newaxis]])
+    return agent_setting
+```

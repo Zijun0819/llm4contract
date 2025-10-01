@@ -1,0 +1,10 @@
+Refine costs by minimizing violations, add actions dynamically, and adjust for rejections iteratively.
+Use clustering on inferred beliefs, set costs from min accepted payoff per cluster, enforcing IC and IR via max over rejected contracts.
+Refine cost bounds using KDTree for rejected contracts, enforce IR/IC via utility adjustments.
+Use GMM clustering over KMeans, handle costs by minimizing accepted wages, and refine rejection constraints.
+Use LP for feasibility, cluster similar actions, and adjust costs using rejection logs.
+Use linear programming for efficiency; cluster with GMM; ensure costs reflect both acceptance and rejection constraints.
+Clustering enhances stability; ensure robust LP solutions and accurate cost bounds for rejection logs.
+Refine clustering with rejection logs, use min over linear constraints, and directly estimate costs from data.
+Use GMM for clustering, infer costs from min utilities, refine with IC/IR via optimization.
+Use more clusters, refine cost estimates with accepted data, ensure costs are non-negative.

@@ -1,0 +1,5 @@
+_target_: utils.llm_clients.Qwen.QwenClient
+
+model: Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8 # LLM model
+temperature: 0.5  # temperature for chat completion
+api_key: null

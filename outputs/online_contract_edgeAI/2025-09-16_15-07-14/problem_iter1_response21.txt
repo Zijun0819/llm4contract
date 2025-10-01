@@ -1,0 +1,72 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans, DBSCAN
+from sklearn.mixture import GaussianMixture
+
+def agent_solver(v, content):
+    n_candidates = min(10, len(content))
+    m_outcomes = len(v)
+    
+    def solve_p(w, u):
+        m = len(w)
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, u])
+        res = linprog(w, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)]*m, method='highs')
+        return res.x if res.success else None
+
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    if not accepted_logs:
+        raise ValueError("No accepted contracts")
+    
+    accepted_ps = []
+    for log in accepted_logs:
+        p_candidate = solve_p(log['Contract'], log['Principal Utility'])
+        if p_candidate is not None:
+            accepted_ps.append(p_candidate)
+    
+    if not accepted_ps:
+        raise ValueError("No valid inferred distributions")
+    
+    accepted_ps = np.array(accepted_ps)
+    
+    if len(accepted_ps) > 10:
+        kmeans = KMeans(n_clusters=n_candidates, random_state=0, n_init=10).fit(accepted_ps)
+        p_centers = kmeans.cluster_centers_
+    elif len(accepted_ps) > 1:
+        gmm = GaussianMixture(n_components=min(n_candidates, len(accepted_ps)), random_state=0).fit(accepted_ps)
+        p_centers = gmm.means_
+    else:
+        p_centers = accepted_ps
+    
+    n_actions = len(p_centers)
+    
+    def clustering_cost(c):
+        total_cost = 0
+        assigned_actions = []
+        for log in accepted_logs:
+            utils = p_centers @ log['Contract'] - c
+            best_action = np.argmax(utils)
+            total_cost += utils[best_action]
+            assigned_actions.append(best_action)
+        return -total_cost
+    
+    c_guess = np.zeros(n_actions)
+    cons = [{'type': 'ineq', 'fun': lambda x: x[i]} for i in range(n_actions)]
+    res = minimize(clustering_cost, c_guess, constraints=cons, method='SLSQP')
+    if res.success:
+        c_opt = res.x
+    else:
+        c_opt = np.zeros(n_actions)
+    
+    reject_logs = [log for log in content if log['Agent Action'] == -1]
+    if reject_logs:
+        reject_wages = np.array([log['Contract'] for log in reject_logs]).T
+        reject_utils = p_centers @ reject_wages
+        max_reject_utils = np.max(reject_utils, axis=1)
+        c_opt = np.maximum(c_opt, max_reject_utils)
+    
+    full_setting = np.hstack([p_centers, c_opt.reshape(-1, 1)])
+    full_setting[:, -1] = np.clip(full_setting[:, -1], 0, None)
+    return full_setting
+```

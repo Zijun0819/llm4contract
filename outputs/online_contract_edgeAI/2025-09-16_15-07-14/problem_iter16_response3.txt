@@ -1,0 +1,95 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver(v: np.ndarray, content: list) -> np.ndarray:
+    n_outcomes = len(v)
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        return np.hstack([np.eye(n_outcomes), np.zeros((n_outcomes, 1))])
+    
+    def solve_lp(w, u_principal):
+        A_eq = np.vstack([np.ones(n_outcomes), v - w])
+        b_eq = np.array([1.0, u_principal])
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * n_outcomes, method='highs')
+        if res.success:
+            p = res.x
+            if np.isclose(p.sum(), 1.0) and np.isclose((v - w) @ p, u_principal):
+                return p
+        return None
+    
+    candidate_ps = []
+    for log in accepted_logs:
+        p_candidate = solve_lp(np.array(log['Contract']), log['Principal Utility'])
+        if p_candidate is not None:
+            candidate_ps.append(p_candidate)
+    
+    if not candidate_ps:
+        return np.hstack([np.eye(n_outcomes), np.zeros((n_outcomes, 1))])
+    
+    candidate_ps = np.array(candidate_ps)
+    candidate_ps = np.clip(candidate_ps, 0, 1)
+    row_sums = candidate_ps.sum(axis=1, keepdims=True)
+    candidate_ps = np.where(row_sums > 0, candidate_ps / row_sums, candidate_ps)
+    
+    n_candidates = len(candidate_ps)
+    n_components = min(max(1, n_candidates // 5), 20)
+    
+    gmm = GaussianMixture(n_components=n_components, random_state=42, covariance_type='diag', tol=1e-8, max_iter=300)
+    gmm.fit(candidate_ps)
+    gmm_centers = gmm.means_
+    gmm_centers = np.clip(gmm_centers, 0, 1)
+    row_sums = gmm_centers.sum(axis=1, keepdims=True)
+    gmm_centers = np.where(row_sums > 0, gmm_centers / row_sums, gmm_centers)
+    gmm_assignments = gmm.predict(candidate_ps)
+    
+    action_costs = np.zeros(n_components)
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])
+    
+    for i in range(n_components):
+        cluster_mask = (gmm_assignments == i)
+        if np.any(cluster_mask):
+            utilities = accepted_contracts[cluster_mask] @ gmm_centers[i]
+            action_costs[i] = np.maximum(np.min(utilities) - 1e-10, 0.0)
+        else:
+            action_costs[i] = 0.0
+    
+    if rejected_logs:
+        rejected_contracts = np.array([log['Contract'] for log in rejected_logs])
+        rejected_utilities = rejected_contracts @ gmm_centers.T
+        max_rejected_per_cluster = np.max(rejected_utilities, axis=0)
+        action_costs = np.maximum(action_costs, max_rejected_per_cluster + 1e-10)
+    
+    valid_indices = []
+    for i in range(n_components):
+        valid = True
+        p = gmm_centers[i]
+        cost = action_costs[i]
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            if w @ p - cost < -1e-8:
+                valid = False
+                break
+        if valid and rejected_logs:
+            for log in rejected_logs:
+                w = np.array(log['Contract'])
+                if w @ p - cost >= -1e-8:
+                    valid = False
+                    break
+        if valid:
+            valid_indices.append(i)
+    
+    if not valid_indices:
+        return np.hstack([np.eye(n_outcomes), np.zeros((n_outcomes, 1))])
+    
+    valid_centers = gmm_centers[valid_indices]
+    valid_costs = action_costs[valid_indices]
+    
+    return np.hstack([valid_centers, valid_costs.reshape(-1, 1)])
+```

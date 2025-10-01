@@ -1,0 +1,160 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infers a valid agent setting that explains the observed historical interaction logs.
+    :param v: np.ndarray, shape (5,), principal's reward per outcome
+    :param content: pd.DataFrame, columns=['Contract', 'Principal Utility', 'Agent Action']
+                    Contract: list of 5 payments per outcome
+                    Principal Utility: utility accrued to principal (0 if rejection)
+                    Agent Action: 1 if accepted, -1 if rejected
+    :return: np.ndarray, shape (n_actions, 6), each row = [p(outcomes, 5), cost]
+             probabilities sum to 1, cost >= 0
+    """
+    # Constants
+    m = len(v)  # outcomes = 5
+    logs = content
+    L = len(logs)
+
+    # Convert contracts and utilities to arrays
+    contracts = np.array(logs['Contract'].tolist())  # shape (L,5)
+    principal_utils = logs['Principal Utility'].values  # shape (L,)
+    agent_actions = logs['Agent Action'].values  # shape (L,)
+
+    # Separate acceptance and rejection logs
+    accept_idxs = np.where(agent_actions == 1)[0]
+    reject_idxs = np.where(agent_actions == -1)[0]
+
+    # Step 1: Hypothesize agent outcome distributions by LP from accept logs:
+    # For accepted contract: Agent utility = E_w(p,w) - cost >=0 => cost <= E_w(p,w)
+    # We also know Principal utility = E_v(p,v) - E_w(p,w)
+    # So E_w(p,w) = E_v(p,v) - Principal utility
+
+    # We'll propose candidate p's per accepted contract by maximizing entropy p subject to:
+    # sum p =1, p*contracts = agent_expected_pay >= cost (unknown, so set to agent exp pay),
+    # but we can only solve for p, cost can be inferred later.
+
+    # Define a helper to solve max entropy p given w and utility constraints with numerics:
+    # We'll solve a constrained LP or QP for p that satisfies principal utility consistent and fits p*w.
+
+    # To keep it simpler and numerically stable, we set:
+    # Use linear programming to find a p vector s.t.
+    # sum(p)=1,
+    # p@v = principal_utils + p@contracts,
+    # bounds p in [0,1]
+
+    # This is underdetermined, but let’s find p by maximizing entropy: sum -p_i*log(p_i)
+    # It's nonlinear. We'll approximate by picking p minimizing ||p - uniform|| subject to constraints.
+
+    # Prepare LP matrices (choose p close to uniform = 1/5)
+    uniform_p = np.ones(m) / m
+
+    candidate_p_list = []
+    cost_lowerbounds = []
+
+    for idx in accept_idxs:
+        w = contracts[idx]
+        pu = principal_utils[idx]  # principal utility = p@v - p@w
+        # So p@(v-w) = pu
+
+        # The equation: p@(v-w) = pu and sum p =1, p>=0
+
+        # Set up linear constraints:
+        c = np.zeros(m)  # objective: minimize ||p - uniform_p||_2, use least squares via linprog approx
+
+        # We'll solve minimize sum |p - uniform_p| via two variables p and p_diff,
+        # But for simplicity, find p that satisfies constraints and closest to uniform_p by scanning.
+
+        # Instead, solve linprog to minimize distance to uniform_p:
+        # min pL1_dist = sum u_i s.t. -u_i <= p_i - uniform_i <= u_i
+        # Use variable change: p actual, u slack variables
+        # But linprog doesn't accept abs, so we can do variables: p_i = uniform_i + s_i, with s_i in [-1,1]
+
+        # To keep complexity low, just find any p satisfying constraints via least squares proj:
+        A_eq = np.vstack([np.ones(m), (v - w)])
+        b_eq = np.array([1.0, pu])
+        bounds = [(0.0, 1.0) for _ in range(m)]
+
+        res = linprog(
+            c=np.zeros(m),
+            A_eq=A_eq,
+            b_eq=b_eq,
+            bounds=bounds,
+            method='highs',
+        )
+        if res.success:
+            candidate_p_list.append(res.x)
+            cost_lowerbounds.append(np.dot(res.x, w))  # cost <= expected payment
+        else:
+            # If fail, fallback to uniform_p and record minimum cost = uniform_p@w (overapprox)
+            candidate_p_list.append(uniform_p)
+            cost_lowerbounds.append(np.dot(uniform_p, w))
+
+    if len(candidate_p_list) == 0:
+        # No accepted logs: trivial uniform strategy and zero cost
+        return np.hstack([np.ones((1, m)) / m, np.zeros((1, 1))])
+
+    # Step 2: Cluster candidate_p_list to get representative actions
+    candidate_p_array = np.array(candidate_p_list)  # shape (num_accepts,5)
+    # dynamically select cluster number by elbow or use up to 7 clusters
+    max_clusters = min(7, len(candidate_p_array))
+    if max_clusters == 1:
+        p_centers = candidate_p_array
+    else:
+        kmeans = KMeans(n_clusters=max_clusters, random_state=42, n_init=15).fit(candidate_p_array)
+        p_centers = kmeans.cluster_centers_  # shape (k,5)
+    n_actions = p_centers.shape[0]
+
+    # Step 3: For each accepted log, assign to closest p_center in L1 norm weighted by contract payment similarity
+    assigns = np.full(L, -1)
+    for i in accept_idxs:
+        w = contracts[i]
+        # Estimate expected agent payment under each p_center
+        agent_payments = p_centers @ w  # shape (n_actions,)
+        # Assign to max expected payment (most plausible action to explain acceptance)
+        assigns[i] = int(np.argmax(agent_payments))
+
+    # Step 4: Infer cost per action lower bound from acceptance constraints:
+    # cost <= expected payment on accepted contracts assigned to that action
+    c_lowerbounds = np.zeros(n_actions)
+    for a in range(n_actions):
+        idxs = np.where(assigns == a)[0]
+        if len(idxs) == 0:
+            c_lowerbounds[a] = 0.0
+        else:
+            # cost <= min payment over assigned accepts (to keep all accept IR feasible)
+            payments = np.array([p_centers[a] @ contracts[i] for i in idxs])
+            c_lowerbounds[a] = payments.min()
+
+    # Step 5: Enforce rejection IR and IC constraints:
+    # For reject logs, agent utility < 0 for all actions:
+    # agent utility = expected payment - cost < 0 => cost > expected payment.
+
+    if len(reject_idxs) > 0:
+        rej_contracts = contracts[reject_idxs]  # shape (num_rej,5)
+        rej_payments = p_centers @ rej_contracts.T  # shape (n_actions, num_rej)
+        # For each action, cost must exceed max expected payment over rejected contracts to maintain rejection
+        c_reject_threshold = rej_payments.max(axis=1)
+    else:
+        c_reject_threshold = np.zeros(n_actions)
+
+    # Final cost per action = max(lowerbound acceptance cost, rejection threshold)
+    costs = np.maximum(c_lowerbounds, c_reject_threshold)
+
+    # To ensure no negative cost:
+    costs = np.clip(costs, a_min=0.0, a_max=None)
+
+    # Step 6: Validate and fix p_centers to sum to 1 and be non-negative (clip small negativity for safety)
+    p_centers = np.clip(p_centers, 0.0, 1.0)
+    p_centers /= p_centers.sum(axis=1, keepdims=True)
+
+    # Step 7: Return array shape (n_actions, 6)
+    agent_setting = np.hstack([p_centers, costs.reshape(-1, 1)])
+
+    return agent_setting
+```

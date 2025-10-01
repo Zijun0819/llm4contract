@@ -1,0 +1,10 @@
+Use GaussianMixture and maximum costs.
+Optimize linear programming in `mini_lp_p`.
+Use GaussianMixture instead of KMeans.
+Use GaussianMixture weights and predict.
+Reduce n_candidates for better fit.
+Optimize GaussianMixture fitting and cost calculations.
+Use GaussianMixture weights.
+Use GMM, increase candidates.
+Increase n_candidates for better fit.
+Use GaussianMixture weights.

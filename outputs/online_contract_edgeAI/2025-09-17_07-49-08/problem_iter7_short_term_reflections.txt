@@ -1,0 +1,20 @@
+Leverage principal utility in LP. Optimize costs based on accepted contracts, not rejected ones. Increase `n_candidates`.
+
+Minimize cost estimation loss; increase `n_candidates`; consider more sophisticated cost constraints during optimization.
+
+Leverage principal's utility in LP, optimize rejected contracts' utility, and refine cost initialization.
+
+Consider agent utility in `mini_lp_p`, use KMeans, and optimize costs with constraints.
+
+Fewer candidate actions, and cost initialization focusing on rejected contracts, improve agent setting inference.
+
+Consider rejected contracts in cost estimation. Increase `n_candidates`, and use K-means for clustering.
+
+Consider rejected contracts, refine cost initialization with optimization, and increase `n_candidates`.
+
+Minimize utility for accepted contracts, maximize utility for rejected contracts when inferring agent beliefs.
+
+Leverage principal utility in LP, explore diverse initializations, and refine cost estimation using accepted contracts.
+
+Fewer candidates, refined K-means, direct cost optimization from accepted contracts, and consistency checks improve inference.
+

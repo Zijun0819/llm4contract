@@ -1,0 +1,101 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, minimize, Bounds
+from sklearn.mixture import GaussianMixture
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = len(v)
+    eps = 1e-10
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not content:
+        return np.zeros((1, m_outcomes + 1))
+    
+    p_list = []
+    for log in accepted_logs:
+        w = np.array(log['Contract'])
+        u_p = log['Principal Utility']
+        if u_p < eps:
+            continue
+        c = -w
+        A_eq = np.vstack([np.ones(m_outcomes), v])
+        b_eq = np.array([1.0, u_p])
+        bounds = [(0.0, 1.0)] * m_outcomes
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p_candidate = res.x
+            if np.all(p_candidate >= 0) and np.abs(np.sum(p_candidate) - 1.0) < eps and np.abs(np.dot(v, p_candidate) - u_p) < eps:
+                p_list.append(p_candidate)
+    
+    if not p_list:
+        p_centroids = np.full((1, m_outcomes), 1.0 / m_outcomes)
+    else:
+        p_array = np.array(p_list)
+        n_candidates = min(12, len(p_array))
+        if n_candidates > 1:
+            gmm = GaussianMixture(n_components=n_candidates, covariance_type='diag', random_state=42, n_init=10)
+            gmm.fit(p_array)
+            p_centroids = gmm.means_
+        else:
+            p_centroids = p_array
+        
+        p_centroids = np.clip(p_centroids, 0.0, 1.0)
+        p_centroids = p_centroids / np.sum(p_centroids, axis=1, keepdims=True)
+    
+    n_actions = len(p_centroids)
+    cost_lower_bounds = np.zeros(n_actions)
+    cost_upper_bounds = np.full(n_actions, np.inf)
+    
+    for a in range(n_actions):
+        p_a = p_centroids[a]
+        min_accepted_util = np.inf
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            agent_util = np.dot(p_a, w)
+            if agent_util >= -eps:
+                min_accepted_util = min(min_accepted_util, agent_util)
+        if min_accepted_util != np.inf:
+            cost_lower_bounds[a] = max(0.0, min_accepted_util - eps)
+        
+        max_rejected_util = -np.inf
+        for log in rejected_logs:
+            w = np.array(log['Contract'])
+            agent_util = np.dot(p_a, w)
+            if agent_util < -eps:
+                max_rejected_util = max(max_rejected_util, agent_util)
+        if max_rejected_util != -np.inf:
+            cost_upper_bounds[a] = max(0.0, -max_rejected_util + eps)
+    
+    def objective(costs):
+        total_violation = 0.0
+        for log in content:
+            w = np.array(log['Contract'])
+            utils = np.array([np.dot(p_centroids[a], w) - costs[a] for a in range(n_actions)])
+            max_util = np.max(utils)
+            best_action = np.argmax(utils)
+            
+            if log['Agent Action'] == 1:
+                if max_util < -eps:
+                    total_violation += (-max_util) ** 2
+                for a in range(n_actions):
+                    if a != best_action and utils[a] > utils[best_action] + eps:
+                        total_violation += (utils[a] - utils[best_action]) ** 2
+            else:
+                if max_util >= -eps:
+                    total_violation += (max_util + eps) ** 2
+        return total_violation
+    
+    initial_costs = np.maximum(cost_lower_bounds, 0.0)
+    bounds = Bounds(cost_lower_bounds, cost_upper_bounds, keep_feasible=True)
+    constraints = [{'type': 'ineq', 'fun': lambda x: x - cost_lower_bounds},
+                   {'type': 'ineq', 'fun': lambda x: cost_upper_bounds - x}]
+    
+    res = minimize(objective, initial_costs, method='SLSQP', bounds=bounds, constraints=constraints, options={'maxiter': 10000, 'ftol': 1e-12})
+    final_costs = res.x if res.success else initial_costs
+    final_costs = np.maximum(final_costs, 0.0)
+    
+    agent_setting = np.hstack([p_centroids, final_costs.reshape(-1, 1)])
+    return agent_setting
+```

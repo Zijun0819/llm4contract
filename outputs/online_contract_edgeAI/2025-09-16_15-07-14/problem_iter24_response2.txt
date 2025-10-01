@@ -1,0 +1,64 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    n_outcomes = len(v)
+    
+    if not accepted_logs:
+        return np.hstack([np.eye(n_outcomes), np.zeros((n_outcomes, 1))])
+    
+    def infer_distribution(w, u_principal):
+        A_eq = np.vstack([np.ones(n_outcomes), v - w])
+        b_eq = np.array([1, u_principal])
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * n_outcomes, method='highs')
+        if res.success:
+            p = res.x.clip(0, 1)
+            p_sum = p.sum()
+            if p_sum > 1e-10:
+                p /= p_sum
+                return p
+        return None
+    
+    distributions = []
+    for log in accepted_logs:
+        w_arr = np.array(log['Contract'])
+        u_principal = log['Principal Utility']
+        dist = infer_distribution(w_arr, u_principal)
+        if dist is not None:
+            distributions.append(dist)
+    
+    if not distributions:
+        return np.hstack([np.eye(n_outcomes), np.zeros((n_outcomes, 1))])
+    
+    all_p = np.array(distributions)
+    n_components = min(10, len(all_p))
+    
+    gmm = GaussianMixture(n_components=n_components, random_state=42)
+    gmm.fit(all_p)
+    centers = gmm.means_.clip(0, 1)
+    centers = centers / centers.sum(axis=1, keepdims=True)
+    
+    epsilon = 1e-8
+    action_costs = np.zeros(n_components)
+    labels = gmm.predict(all_p)
+    
+    for i in range(n_components):
+        cluster_indices = np.where(labels == i)[0]
+        if cluster_indices.size > 0:
+            wages = np.array([accepted_logs[j]['Contract'] for j in cluster_indices])
+            utilities = np.sum(wages * centers[i], axis=1)
+            action_costs[i] = np.min(utilities) - epsilon
+    
+    if rejected_logs:
+        rejected_wages = np.array([log['Contract'] for log in rejected_logs])
+        rejected_utilities = rejected_wages @ centers.T - action_costs
+        max_rejected = np.max(rejected_utilities, axis=0)
+        action_costs = np.maximum(action_costs, max_rejected + epsilon)
+    
+    action_costs = np.maximum(action_costs, 0)
+    return np.hstack([centers, action_costs.reshape(-1, 1)])
+```

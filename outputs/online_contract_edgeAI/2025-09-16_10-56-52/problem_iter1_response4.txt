@@ -1,0 +1,61 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import minimize, linprog
+from sklearn.cluster import KMeans
+from typing import List, Dict
+
+def agent_solver(v: np.ndarray, content: List[Dict]) -> np.ndarray:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    if not accepted_logs:
+        return np.zeros((1, 13))
+        
+    m_outcomes = v.shape[0]
+    n_actions = max(3, min(len(accepted_logs)//5, 15))
+    
+    def infer_p_and_cost(wage, principal_utility):
+        constraints = [
+            {'type': 'eq', 'fun': lambda p: np.sum(p) - 1},
+            {'type': 'eq', 'fun': lambda p: np.dot(v - wage, p) - principal_utility}
+        ]
+        bounds = [(0, 1)] * m_outcomes
+        res = minimize(lambda p: np.dot(wage, p), x0=np.ones(m_outcomes)/m_outcomes, 
+                      constraints=constraints, bounds=bounds)
+        if res.success:
+            c = np.dot(wage, res.x)
+            return res.x, c
+        return None, None
+    
+    strategies = []
+    for log in accepted_logs:
+        p, c = infer_p_and_cost(log['Contract'], log['Principal Utility'])
+        if p is not None:
+            strategies.append(np.append(p, c))
+    
+    if not strategies:
+        return np.zeros((1, 13))
+    
+    X = np.array(strategies)
+    kmeans = KMeans(n_clusters=n_actions, random_state=42, n_init=10).fit(X)
+    cluster_centers = kmeans.cluster_centers_
+    
+    agent_strategies = []
+    for center in cluster_centers:
+        p = center[:-1]
+        p = np.clip(p, 0, 1)
+        p /= np.sum(p)
+        c = center[-1]
+        agent_strategies.append(np.append(p, c))
+    
+    for log in content:
+        if log['Agent Action'] == -1:
+            w = log['Contract']
+            for i in range(len(agent_strategies)):
+                p = agent_strategies[i][:-1]
+                c = agent_strategies[i][-1]
+                if np.dot(p, w) >= c:
+                    c_new = np.dot(p, w) + 1e-6
+                    agent_strategies[i][-1] = max(c_new, agent_strategies[i][-1])
+    
+    return np.array(agent_strategies)
+```

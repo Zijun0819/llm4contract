@@ -1,0 +1,124 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.preprocessing import normalize
+import cvxpy as cp
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = v.shape[0]
+    logs = content.copy()
+    
+    accepted_contracts = [log['Contract'] for log in logs if log['Agent Action'] == 1]
+    rejected_contracts = [log['Contract'] for log in logs if log['Agent Action'] == -1]
+    
+    if not accepted_contracts:
+        raise ValueError("No accepted contracts in logs")
+    
+    def solve_p_min(w, u_min):
+        p = cp.Variable(n_outcomes)
+        constraints = [p >= 0, cp.sum(p) == 1, p @ (v - w) >= u_min]
+        objective = cp.Minimize(-p @ w)
+        problem = cp.Problem(objective, constraints)
+        problem.solve()
+        return p.value if problem.status == cp.OPTIMAL else None
+    
+    p_candidates = []
+    for log in logs:
+        if log['Agent Action'] == 1:
+            w = np.array(log['Contract'])
+            u = log['Principal Utility']
+            p_sol = solve_p_min(w, u)
+            if p_sol is not None and not np.any(np.isnan(p_sol)):
+                p_candidates.append(p_sol)
+    
+    p_candidates = np.array(p_candidates)
+    
+    lof = LocalOutlierFactor(n_neighbors=min(20, len(p_candidates)))
+    outlier_labels = lof.fit_predict(p_candidates)
+    filtered_p = p_candidates[outlier_labels == 1]
+    
+    if len(filtered_p) == 0:
+        filtered_p = p_candidates
+    
+    max_clusters = min(10, len(filtered_p))
+    inertia = []
+    for k in range(1, max_clusters+1):
+        kmeans = KMeans(n_clusters=k, random_state=0, n_init=5).fit(filtered_p)
+        inertia.append(kmeans.inertia_)
+    
+    diff = np.diff(inertia)
+    if len(diff) > 0:
+        elbow_point = np.argmin(diff) + 1
+        n_clusters = max(1, min(elbow_point + 1, max_clusters))
+    else:
+        n_clusters = 1
+    
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(filtered_p)
+    action_centers = kmeans.cluster_centers_
+    
+    action_costs = np.zeros(n_clusters)
+    for i in range(n_clusters):
+        cluster_mask = (kmeans.labels_ == i)
+        if np.any(cluster_mask):
+            cluster_ps = filtered_p[cluster_mask]
+            cluster_wages = np.array([accepted_contracts[j] for j in np.where(cluster_mask)[0]])
+            utilities = np.array([p @ w for p, w in zip(cluster_ps, cluster_wages)])
+            action_costs[i] = np.max(utilities) if len(utilities) > 0 else 0.0
+    
+    if rejected_contracts:
+        rej_wages = np.array(rejected_contracts).T
+        rej_utils = action_centers @ rej_wages
+        max_rej_utils = np.max(rej_utils, axis=1)
+        action_costs = np.maximum(action_costs, max_rej_utils)
+    
+    for i in range(n_clusters):
+        mask = np.array([True] * n_outcomes)
+        mask[np.argmax(action_centers[i])] = False
+        action_centers[i][mask] = action_centers[i][mask] * (1 - action_centers[i][~mask][0]) / np.sum(action_centers[i][mask])
+    
+    for i in range(n_clusters):
+        action_centers[i] = normalize(action_centers[i].reshape(1, -1), norm='l1')[0]
+    
+    agent_settings = np.hstack([action_centers, action_costs.reshape(-1, 1)])
+    
+    def check_ic(settings, accepted_contracts, rejected_contracts):
+        n_actions = settings.shape[0]
+        p_matrix = settings[:, :-1]
+        costs = settings[:, -1]
+        
+        for w in accepted_contracts:
+            utils = p_matrix @ w - costs
+            if np.max(utils) < 0:
+                return False
+            if np.count_nonzero(utils == np.max(utils)) > 1:
+                return False
+        
+        for w in rejected_contracts:
+            utils = p_matrix @ w - costs
+            if np.any(utils >= 0):
+                return False
+        
+        return True
+    
+    if not check_ic(agent_settings, accepted_contracts, rejected_contracts):
+        action_costs_adj = action_costs.copy()
+        scaling_factor = 1.0
+        for _ in range(10):
+            agent_settings_adj = np.hstack([action_centers, (action_costs_adj * scaling_factor).reshape(-1, 1)])
+            if check_ic(agent_settings_adj, accepted_contracts, rejected_contracts):
+                return agent_settings_adj
+            scaling_factor *= 0.9
+        
+        for w in accepted_contracts:
+            utils = action_centers @ w - action_costs
+            best_action = np.argmax(utils)
+            if utils[best_action] < 0:
+                action_costs[best_action] = np.max([action_costs[best_action] - 1e-6, 0])
+        
+        agent_settings = np.hstack([action_centers, action_costs.reshape(-1, 1)])
+    
+    return agent_settings
+```

@@ -1,0 +1,18 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+→ Best principal utility: 0.01720312806883944
+→ Inferred agent&principal utility:    4.018830606583327 0.018905139883053337
+→ Agent and principal score:    0 4.018830596583326
+[*] Instance 0: 4.018830596583326
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 158, in <module>
+    obj = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 102, in evaluate_llm
+    inferred_agent_setting = llm_agent_solver(v, content)
+  File "E:\Coding\pythonProject\llm4contract\problems\gpt.py", line 175, in agent_solver_v2
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\numpy\_core\shape_base.py", line 292, in vstack
+    return _nx.concatenate(arrs, 0, dtype=dtype, casting=casting)
+ValueError: all the input array dimensions except for the concatenation axis must match exactly, but along dimension 1, the array at index 0 has size 1 and the array at index 1 has size 0

@@ -1,0 +1,2 @@
+Refine `mini_lp_p` with principal utility. Initialize costs using accepted/rejected contracts. Increase `n_candidates` and K-means `n_init`. Minimize agent utility for rejections. Use `linprog` for accepted contracts.
+

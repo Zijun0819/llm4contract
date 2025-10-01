@@ -1,0 +1,2 @@
+Refine `mini_lp_p` to maximize agent's utility from rejected contracts. Use 'k-means++' with higher `n_init` for KMeans. Initialize costs using accepted contracts, ensuring non-negativity. Enforce IR constraints strictly.
+

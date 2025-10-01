@@ -1,0 +1,1 @@
+Increase max_k to 15, use stricter slack variables, improve PCA dimensionality, and refine cost regularization with tighter bounds. Enhance clustering stability (n_init=20), apply utility maximization for action assignments, and ensure strictly positive costs via wage-based regularization. Leverage LP duality for feasibility.

@@ -1,0 +1,16 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 149, in <module>
+    _p, _c, _v, _contract_logs = extract_data(_dataset_path)
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 128, in extract_data
+    p, c = extract_contract_elements(agent_setting)
+  File "E:\Coding\pythonProject\llm4contract\utils\utils.py", line 127, in extract_contract_elements
+    p = np.array(agent_setting[[f'p{i}' for i in range(len(agent_setting))]])
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\pandas\core\frame.py", line 4108, in __getitem__
+    indexer = self.columns._get_indexer_strict(key, "columns")[1]
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\pandas\core\indexes\base.py", line 6200, in _get_indexer_strict
+    self._raise_if_missing(keyarr, indexer, axis_name)
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\pandas\core\indexes\base.py", line 6249, in _raise_if_missing
+    raise KeyError(f"None of [{key}] are in the [{axis_name}]")
+KeyError: "None of [Index(['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10',\n       'p11', 'p12', 'p13', 'p14', 'p15', 'p16', 'p17', 'p18', 'p19', 'p20',\n       'p21', 'p22', 'p23', 'p24', 'p25', 'p26', 'p27', 'p28', 'p29', 'p30',\n       'p31', 'p32', 'p33', 'p34', 'p35', 'p36', 'p37', 'p38', 'p39', 'p40',\n       'p41', 'p42', 'p43', 'p44', 'p45', 'p46', 'p47', 'p48', 'p49', 'p50',\n       'p51', 'p52', 'p53', 'p54', 'p55', 'p56', 'p57', 'p58', 'p59', 'p60',\n       'p61', 'p62', 'p63', 'p64', 'p65', 'p66', 'p67', 'p68', 'p69', 'p70',\n       'p71', 'p72', 'p73', 'p74', 'p75', 'p76', 'p77', 'p78', 'p79', 'p80',\n       'p81', 'p82', 'p83', 'p84', 'p85', 'p86', 'p87', 'p88', 'p89', 'p90',\n       'p91', 'p92', 'p93', 'p94', 'p95', 'p96', 'p97', 'p98', 'p99'],\n      dtype='object')] are in the [columns]"

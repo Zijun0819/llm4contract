@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 13, in <module>
+    from problems.online_contract_edgeAI import gpt
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py", line 48
+    c_ir[a] = 0.0!={=np.mean([log['Contract']@v for log in content])}
+                    ^
+SyntaxError: invalid syntax

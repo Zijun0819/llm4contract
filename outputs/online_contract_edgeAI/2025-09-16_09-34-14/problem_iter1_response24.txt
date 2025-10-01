@@ -1,0 +1,90 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_candidates = 10
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def mini_lp_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        m = len(w)
+        A_eq = [np.ones(m), v - w]
+        b_eq = [1.0, u]
+        bounds = [(0, 1)] * m
+        res = linprog(w, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w_i = log['Contract']
+            u_i = log['Principal Utility']
+            p_i = mini_lp_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+
+    if not candidate_ps:
+        raise ValueError("No valid accepted logs to infer agent strategies.")
+
+    all_p = np.array(candidate_ps)
+    kmeans = KMeans(n_clusters=n_candidates, random_state=0, n_init=10).fit(all_p)
+    p0 = kmeans.cluster_centers_
+
+    assigns = np.full(L, -1, dtype=int)
+    for i, log in enumerate(content):
+        if log['Agent Action'] == 1:
+            w = log['Contract']
+            assigns[i] = int(np.argmax(p0 @ w))
+
+    c_ir = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        idx = np.where(assigns == a)[0]
+        if idx.size > 0:
+            wages = np.array([content[i]['Contract'] for i in idx]).T
+            c_ir[a] = p0[a] @ wages.min(axis=1)
+        else:
+            c_ir[a] = 0.0!={=np.mean([log['Contract']@v for log in content])}
+
+    rej_idx = [i for i, log in enumerate(content) if log['Agent Action'] == -1]
+    if rej_idx:
+        wages_rej = np.array([content[i]['Contract'] for i in rej_idx]).T
+        rej_utils = p0 @ wages_rej
+        c_rej = rej_utils.max(axis=1)
+    else:
+        c_rej = np.zeros(n_candidates)
+
+    c_init = np.maximum(c_ir, c_rej)
+    agent_setting = np.hstack([p0, c_init[:, np.newaxis]])
+
+    new_content = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            new_content.append({
+                'Contract': log['Contract'],
+                'Agent Action': np.argmax(agent_setting[:, -1] - agent_setting[:, :-1] @ log['Contract'])
+            })
+        else:
+            new_content.append({
+                'Contract': log['Contract'],
+                'Agent Action': -1
+            })
+
+    candidate_ps_new = []
+    for log in new_content:
+        if log['Agent Action'] != -1:
+            w_i = log['Contract']
+            u_i = agent_setting[log['Agent Action'], -1]
+            p_i = mini_lp_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps_new.append(p_i)
+
+    if candidate_ps_new:
+        all_p_new = np.array(candidate_ps_new)
+        kmeans_new = KMeans(n_clusters=n_candidates, random_state=0, n_init=10).fit(all_p_new)
+        p0_new = kmeans_new.cluster_centers_
+        agent_setting = np.hstack([p0_new, agent_setting[:, -1:]])
+    return agent_setting
+```

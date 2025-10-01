@@ -1,0 +1,2 @@
+- If the agent accepted the contract, the best agent action must yield the correct principal utility
+- If the agent rejected the contract, no action should yield non-negative utility.

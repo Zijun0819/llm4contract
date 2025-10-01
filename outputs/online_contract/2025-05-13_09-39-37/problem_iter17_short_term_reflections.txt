@@ -1,0 +1,10 @@
+Use tighter LP tolerances, ensure larger clusters, refine cost increments, and strictly normalize probabilities and costs.
+Use finer clustering eps, validate min_samples, tighten LP tolerances, refine cost increments, and normalize probabilities strictly.
+Use finer clustering eps, allow smaller clusters, tighten LP tolerances, refine cost increments, and early stop on cost stability.
+Use finer clustering parameters, tighter LP tolerances, adaptive cost increments, and robust noise assignment for stable inference.
+Balance DBSCAN parameters for stable clusters; tighten LP tolerances; use smaller cost increments; ensure strict normalization and early stopping.
+Use tighter LP tolerances, finer clustering eps, allow smaller clusters, assign noise by cosine similarity, refine costs iteratively.
+Use finer DBSCAN eps grid, smaller cost increments, more iterations, and robust LP fallback for stable, precise agent inference.
+Use adaptive min_samples, finer eps grid, tighter LP tolerances, balanced silhouette threshold, and smaller cost increments for stability.
+Use smaller DBSCAN min_samples, tighter LP tolerances, finer cost increments, and adaptive clustering for robust agent inference.
+Use tighter LP tolerances, adaptive clustering with silhouette, finer cost increments, and increased iteration limits for convergence.

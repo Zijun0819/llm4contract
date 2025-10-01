@@ -1,0 +1,206 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions x [5 outcome probs + cost]) that explains
+    the historical contract logs under IR and IC constraints.
+
+    Parameters
+    ----------
+    v : np.ndarray
+        Principal's value vector for the 5 outcomes, shape (5,)
+    content : pd.DataFrame
+        Historical logs with columns ['Contract', 'Principal Utility', 'Agent Action'],
+        where Contract is list/array of 5 payments.
+
+    Returns
+    -------
+    np.ndarray
+        Agent setting matrix of shape (n_actions, 6):
+        - first 5 columns: probability distributions over outcomes (sum to 1)
+        - last column: non-negative costs
+    """
+
+    # Parameters
+    m = v.shape[0]  # number of outcomes (5)
+    L = len(content)
+
+    # Extract contract matrix and labels
+    contracts = np.vstack(content['Contract'].values)  # shape (L, m)
+    utilities = content['Principal Utility'].values    # shape (L,)
+    actions = content['Agent Action'].values           # +1 accept, -1 reject
+
+    # Separate accepted and rejected logs
+    accepted_idx = np.where(actions == 1)[0]
+    rejected_idx = np.where(actions == -1)[0]
+
+    # Step 1: For accepted contracts, estimate agent outcome distributions p via LP
+    # The agent's expected utility = p @ wage - cost >= 0  (acceptance)
+    # We approximate p by solving a feasibility LP per accepted contract:
+    # find p: p @ wages = u_agent + cost, sum(p)=1, p>=0
+    # Since cost unknown, we fix cost=0 temporarily,
+    # we solve for p to satisfy p @ wage >= 0 (agent accepts),
+    # the true cost will be inferred later.
+
+    # We'll first find p that maximizes p @ wage under sum(p)=1 and p>=0,
+    # but this is trivial (max outcome prob=1 on max wage).
+    # Instead, for each accepted contract, find a p s.t. expected wage close to principal utility (proxy).
+    # Because we lack agent utility, we use principal utility as rough target for p @ wage.
+
+    candidate_ps = []
+    for i in accepted_idx:
+        w = contracts[i]
+        # LP: find p to maximize p @ w, s.t sum(p)=1, p>=0, and p.T @ v close to some target?
+        # Here we solve a feasibility LP to find p s.t p @ w >= 0 and sum(p)=1, p>=0.
+        # Add soft constraint to approximate expected principal utility = sum(p * v) * contract ?
+
+        # Formulate LP to minimize ||p@v - principal_utility|| while p@w >= 0 and p sum to 1
+        # We'll do this in a simplified way: minimize |p@v - u_p| with linear constraints
+        # But linprog can't minimize absolute value directly, use two vars approach:
+
+        # Construct LP to minimize t s.t:
+        #  p @ v - u_p <= t
+        #  u_p - p @ v <= t
+        #  sum p = 1
+        #  p >= 0
+        #  p @ w >= 0 (agent accepts)
+        # Variables: p (m), t (1)
+        c = np.zeros(m + 1)
+        c[-1] = 1.0  # minimize t
+
+        A_ub = []
+        b_ub = []
+
+        # p@v - u_p <= t  =>  p@v - t <= u_p
+        A_ub.append(np.append(v, -1))
+        b_ub.append(utilities[i])
+
+        # u_p - p@v <= t  => -p@v - t <= -u_p
+        A_ub.append(np.append(-v, -1))
+        b_ub.append(-utilities[i])
+
+        # -p @ w <= 0  =>  -p @ w <= 0 to ensure p@w >=0 (accept)
+        A_ub.append(np.append(-w, 0))
+        b_ub.append(0)
+
+        A_ub = np.array(A_ub)
+        b_ub = np.array(b_ub)
+
+        A_eq = [np.append(np.ones(m), 0)]  # sum p = 1
+        b_eq = [1]
+
+        bounds = [(0, 1)] * m + [(0, None)]  # p in [0,1], t >=0
+
+        res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p_candidate = res.x[:m]
+            # normalize in case of numeric issues
+            p_candidate = np.maximum(p_candidate, 0)
+            p_candidate /= p_candidate.sum()
+            candidate_ps.append(p_candidate)
+
+    if len(candidate_ps) == 0:
+        # No accepted logs to infer from, uniform distributions with zero cost fallback
+        default_p = np.ones(m) / m
+        return np.hstack([default_p.reshape(1, -1), np.array([[0]])])
+
+    candidate_ps = np.array(candidate_ps)
+
+    # Step 2: Cluster these candidate distributions into distinct agent actions
+    # Use agglomerative clustering with cosine affinity to group similar distributions
+    max_actions = min(10, len(candidate_ps))  # limit max clusters
+    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=0.1, affinity='cosine', linkage='average')
+    clustering.fit(candidate_ps)
+    labels = clustering.labels_
+    n_actions = labels.max() + 1
+
+    # Compute cluster centers as mean of p in each cluster
+    p_centers = np.zeros((n_actions, m))
+    for a in range(n_actions):
+        cluster_p = candidate_ps[labels == a]
+        center = cluster_p.mean(axis=0)
+        center = np.maximum(center, 0)
+        center /= center.sum()
+        p_centers[a] = center
+
+    # Step 3: Infer costs for each action using IR and IC constraints from accepted logs
+    costs = np.zeros(n_actions)
+
+    # For each action, infer cost as minimum expected wage over accepted contracts assigned to that action
+    # cost_a = min_i p_a @ w_i for accepted logs i assigned to action a
+    # If no accepted logs assigned, cost 0
+
+    # Assign each accepted contract to nearest cluster by cosine similarity
+    def cosine_sim(a, b):
+        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-15)
+
+    assigned_actions = -np.ones(L, dtype=int)
+    for i in accepted_idx:
+        w = contracts[i]
+        # Assign action with max p_a @ w
+        scores = p_centers @ w
+        assigned_actions[i] = np.argmax(scores)
+
+    for a in range(n_actions):
+        idx_a = np.where(assigned_actions == a)[0]
+        if len(idx_a) == 0:
+            costs[a] = 0.0
+        else:
+            # cost_a = min over i of p_a @ w_i (agent utility >= 0 implies cost <= p_a @ w_i)
+            vals = np.array([p_centers[a] @ contracts[i] for i in idx_a])
+            costs[a] = vals.min()
+
+    # Step 4: Enforce rejection consistency: agent rejects contracts if max_a (p_a @ w - cost_a) < 0
+    if len(rejected_idx) > 0:
+        rej_wages = contracts[rejected_idx]  # shape (num_rej, m)
+        rej_utils = np.array([[p @ w - c for p, c in zip(p_centers, costs)] for w in rej_wages])  # (num_rej, n_actions)
+        max_rej_util = rej_utils.max(axis=1)  # max over actions for each rejected contract
+        if np.any(max_rej_util >= 0):
+            # To fix, increase costs minimally to ensure all max_rej_util < 0
+            # Solve LP: find delta_costs >=0 s.t
+            # For each rejected contract j: max_a (p_a @ w_j - (cost_a + delta_cost_a)) < 0
+            # Equivalently: p_a @ w_j - cost_a - delta_cost_a < 0 for all a
+            # So p_a @ w_j - cost_a < delta_cost_a for all a,j
+            # We want to find minimal delta_cost_a >=0 that satisfy these inequalities
+
+            from scipy.optimize import linprog
+
+            n_var = n_actions
+            c_lp = np.ones(n_var)  # minimize sum delta_costs
+
+            A_ub_lp = []
+            b_ub_lp = []
+
+            # For each rejection j and action a: delta_cost_a >= p_a @ w_j - cost_a
+            # We write -delta_cost_a <= -(p_a @ w_j - cost_a)
+            for j, w in enumerate(rej_wages):
+                for a in range(n_actions):
+                    val = p_centers[a] @ w - costs[a]
+                    A_row = np.zeros(n_var)
+                    A_row[a] = -1
+                    A_ub_lp.append(A_row)
+                    b_ub_lp.append(-val)
+
+            bounds_lp = [(0, None)] * n_var
+
+            res_lp = linprog(c_lp, A_ub=np.array(A_ub_lp), b_ub=np.array(b_ub_lp), bounds=bounds_lp, method='highs')
+            if res_lp.success:
+                costs += res_lp.x
+            else:
+                # fallback: increase costs by small margin to fix
+                costs += (max_rej_util.max() + 1e-3)
+
+    # Step 5: Final normalization & checks
+    costs = np.maximum(costs, 0)
+    # Ensure p_centers sum to 1 on rows
+    p_centers = np.clip(p_centers, 0, None)
+    p_centers /= p_centers.sum(axis=1, keepdims=True)
+
+    agent_setting = np.hstack([p_centers, costs[:, None]])
+    return agent_setting
+```

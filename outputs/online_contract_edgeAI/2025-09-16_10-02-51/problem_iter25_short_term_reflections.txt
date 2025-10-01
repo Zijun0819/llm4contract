@@ -1,0 +1,12 @@
+Refine cluster centroids, use stricter penalties, and optimize convergence tolerance.
+Infer costs from both accepted and rejected logs; use tighter bounds and more robust optimization.
+Focus on refining cost bounds and ensuring IC constraints with explicit IR checks. Use SLSQP for constraint handling.
+Use covariance_type='diag', adjust initial costs to midpoint, and prefer L-BFGS-B for optimization.
+Stick to L-BFGS-B optimization; avoid ad-hoc clustering heuristics.
+Squaring penalty errors improves stability. Prefer L-BFGS-B optimizer for efficiency. Initialize costs between bounds.
+Focus on refining clustering, incentive constraints, and optimization method for accuracy.
+Use tighter cost bounds from both accepted and rejected logs; optimize with L-BFGS-B for faster, more reliable convergence.
+Refine cost bounds using all logs, ensure IC constraints explicitly, and validate feasibility before fitting.
+1. Use tighter cost bounds from both accepted and rejected logs.  
+2. Enforce stricter incentive compatibility during optimization.  
+3. Improve GMM convergence with more iterations and full covariance.

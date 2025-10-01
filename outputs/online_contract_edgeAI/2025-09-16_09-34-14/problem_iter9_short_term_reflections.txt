@@ -1,0 +1,10 @@
+Improve cost calculation and clustering.
+Increase `n_candidates` and refine GaussianMixture parameters.
+Use multiple GMM initializations.
+Increase n_candidates for better fit.
+Increase `n_candidates` and optimize GaussianMixture.
+Reduce n_candidates for better performance.
+Reduce n_candidates for better fit.
+Increase n_candidates and initialize GaussianMixture with more iterations.
+Optimize GaussianMixture parameters.
+Increase n_candidates for better fit.

@@ -1,0 +1,174 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.7826 seconds
+The inferred contract is [[0.00000000e+000 0.00000000e+000 5.18167299e-002 8.50555121e-001
+  0.00000000e+000 0.00000000e+000 9.76281495e-002 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.00560658e-004]
+ [3.79741329e-001 0.00000000e+000 6.20258671e-001 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 1.34993661e-308
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  7.24426667e-005]
+ [0.00000000e+000 8.78548509e-001 0.00000000e+000 1.21746554e-042
+  0.00000000e+000 3.86200242e-002 6.26354249e-002 0.00000000e+000
+  2.01960417e-002 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.90728041e-004]
+ [0.00000000e+000 7.76596119e-002 7.74363598e-001 0.00000000e+000
+  0.00000000e+000 6.93679708e-002 0.00000000e+000 7.86088194e-002
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  2.21652604e-004]
+ [4.26750583e-001 0.00000000e+000 0.00000000e+000 5.73249417e-001
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 9.07341299e-308
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  6.64304033e-005]
+ [4.63861111e-001 5.36138889e-001 0.00000000e+000 1.92680777e-043
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 3.68770516e-307
+  6.38991812e-218 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  4.51252587e-005]
+ [8.51737855e-001 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  6.76111205e-002 5.78156584e-002 1.66847686e-002 6.15059729e-003
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.12827248e-004]
+ [0.00000000e+000 4.31712105e-001 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 5.68287895e-001 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  2.15352922e-004]
+ [0.00000000e+000 6.61529066e-001 1.78820350e-001 1.52733258e-043
+  1.59650584e-001 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  4.07737157e-198 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.66885128e-004]
+ [0.00000000e+000 6.38190441e-001 0.00000000e+000 3.61809559e-001
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  8.80677188e-218 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.47989760e-004]]
+→ Best principal utility: 0.0003295546157016682
+→ Inferred agent&principal utility:    3.34356128452391e-05 0.00037921186424844414
+→ Agent and principal score:    0 0.00024017730067293843
+[*] Instance 0: 0.00024017730067293843
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.1724 seconds
+The inferred contract is [[6.16522337e-001 0.00000000e+000 0.00000000e+000 3.83477663e-001
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.77407471e-004]
+ [1.81360793e-255 8.16601654e-001 0.00000000e+000 0.00000000e+000
+  1.66060876e-001 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.73374701e-002 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.35399488e-004]
+ [4.05195800e-008 4.38937926e-001 5.24728467e-001 0.00000000e+000
+  0.00000000e+000 3.63335661e-002 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  7.17182531e-005]
+ [8.35968793e-001 0.00000000e+000 0.00000000e+000 4.34395453e-237
+  0.00000000e+000 4.98030977e-002 0.00000000e+000 0.00000000e+000
+  5.47868504e-002 0.00000000e+000 5.94412586e-002 0.00000000e+000
+  1.22911896e-004]
+ [5.12116756e-001 0.00000000e+000 4.87883244e-001 1.68660748e-279
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  6.67561108e-005]
+ [0.00000000e+000 0.00000000e+000 0.00000000e+000 9.12792451e-001
+  0.00000000e+000 8.72075491e-002 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.60075734e-004]
+ [5.87379989e-001 0.00000000e+000 0.00000000e+000 1.07283174e-279
+  4.12620011e-001 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.82818446e-004]
+ [9.60858488e-286 5.51653950e-001 0.00000000e+000 4.48346050e-001
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.11811975e-004]
+ [0.00000000e+000 0.00000000e+000 5.51940936e-001 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 4.48059064e-001
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  4.53811863e-004]
+ [4.39498990e-001 5.60501010e-001 0.00000000e+000 6.87480091e-280
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.63328982e-004]]
+→ Best principal utility: 0.0002995175053353427
+→ Inferred agent&principal utility:    4.100306592339234e-05 0.0003716444111702909
+→ Agent and principal score:    0 0.00024774475375109164
+[*] Instance 1: 0.00024774475375109164
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.1998 seconds
+The inferred contract is [[4.64871173e-001 0.00000000e+000 4.89418318e-001 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 4.57105089e-002 0.00000000e+000
+  0.00000000e+000 1.87549020e-258 0.00000000e+000 0.00000000e+000
+  1.72615356e-004]
+ [2.01867200e-001 7.98132800e-001 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 3.16348756e-294 0.00000000e+000 0.00000000e+000
+  6.61782631e-005]
+ [0.00000000e+000 0.00000000e+000 8.24009875e-001 0.00000000e+000
+  9.72409581e-002 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 7.87491671e-002 0.00000000e+000 0.00000000e+000
+  2.86233788e-004]
+ [3.66625280e-010 3.35436338e-001 4.26354948e-002 5.53509552e-001
+  0.00000000e+000 6.84186149e-002 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.12406293e-004]
+ [1.68889145e-011 7.34957401e-001 0.00000000e+000 0.00000000e+000
+  2.21969349e-001 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  3.18318237e-002 0.00000000e+000 0.00000000e+000 1.12414265e-002
+  1.81987691e-004]
+ [4.22607127e-001 0.00000000e+000 0.00000000e+000 5.77392873e-001
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 5.08061695e-292 0.00000000e+000 0.00000000e+000
+  1.51067038e-004]
+ [7.60875899e-001 2.39124101e-001 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 1.14609970e-287 0.00000000e+000 0.00000000e+000
+  1.26807923e-004]
+ [6.20112085e-009 3.70709886e-001 5.50651032e-001 0.00000000e+000
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 7.86390755e-002
+  0.00000000e+000 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.78602897e-004]
+ [6.66603110e-001 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 3.33396890e-001 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 7.88385989e-288 0.00000000e+000 0.00000000e+000
+  1.30744967e-004]
+ [8.01363341e-001 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  1.19689422e-001 0.00000000e+000 0.00000000e+000 0.00000000e+000
+  0.00000000e+000 7.89472363e-002 0.00000000e+000 0.00000000e+000
+  2.30088553e-004]]
+→ Best principal utility: 0.00028706108385445373
+→ Inferred agent&principal utility:    5.516497868515531e-05 0.00035748249840852794
+→ Agent and principal score:    0 0.00026190666651285463
+[*] Instance 2: 0.00026190666651285463
+[*] Average:
+0.00024994290697896157

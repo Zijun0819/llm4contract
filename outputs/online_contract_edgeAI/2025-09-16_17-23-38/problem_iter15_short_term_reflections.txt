@@ -1,0 +1,43 @@
+1. **Improve PCA dimensionality reduction** for better clustering.
+2. **Increase KMeans n_init** for more stable clustering.
+3. **Stricter slack in cost computation** to satisfy IR/IC constraints.
+4. **Wage-based regularization** ensures positive costs.
+5. **Better cluster center selection** improves inferred agent types.
+1. **Tighter slack** (1e-8 vs 1e-6) improves precision.  
+2. **Stricter cost computation** aligns better with constraints.  
+3. **Improved clustering** (n_init=20) enhances stability.  
+4. **Normalized probabilities** ensure valid distributions.  
+5. **Action assignments** based on utility maximize consistency.
+1. **Increase KMeans `n_init`** to 20 for better clustering stability.  
+2. **Use stricter slack (`1e-8`)** to improve constraint satisfaction.  
+3. **Assign actions via utility maximization** for all contracts, not just accepted ones.  
+4. **Ensure consistent probability normalization** post-clustering.  
+5. **Apply wage-based regularization** to maintain positive costs.
+1. Use stricter slack values for tighter IR/IC constraints.
+2. Increase KMeans `n_init` for more stable clustering.
+3. Adjust PCA dimensionality based on data richness.
+Increase `n_init` in KMeans for better clustering, use stricter slack (`1e-8`) for cost computation, and improve assignment logic for rejections.
+1. **Increase KMeans `n_init`** to 20 for better clustering stability.  
+2. **Use stricter slack (`1e-8`)** to tighten IR/IC constraints.  
+3. **Assign actions via utility maximization** for all contracts, not just accepted ones.  
+4. **Ensure consistent dimensionality handling** in PCA (threshold: 3).  
+5. **Regularize with wage-based costs** to maintain positivity.
+1. **Reduce PCA components** to avoid overfitting.
+2. **Tune clustering parameters** for better action grouping.
+3. **Strengthen IC constraints** to ensure stricter feasibility.
+4. **Regularize cost estimation** to prevent negative values.
+5. **Increase LP solution diversity** for richer candidate actions.
+1. Use tighter slack (1e-8) for cost computation to improve precision.  
+2. Increase KMeans `n_init` to 20 for more stable clustering.  
+3. Assign actions via utility maximization for all contracts, not just accepted ones.  
+4. Normalize probabilities post-clustering to ensure valid distributions.  
+5. Strengthen IR/IC constraints handling for better incentive compatibility.
+1. **Increase KMeans iterations** (`n_init=20`) for better clustering stability.  
+2. **Stricter slack** (`1e-8`) enforces tighter IC/IR constraints.  
+3. **Assign actions via utility maximization** for all contracts, not just accepted ones.  
+4. **Improve PCA condition** to handle edge cases with few samples.  
+5. **Regularize with wage-based costs** to ensure meaningful, positive agent costs.
+1. **Tighter Slack**: Use smaller slack (1e-8) for stricter constraints.
+2. **Improved Clustering**: Increase KMeans `n_init` to 20 for better initialization.
+3. **Consistent Assignments**: Assign actions via utility maximization for all contracts.
+4. **Enhanced PCA Condition**: Apply PCA only when sufficient data (>3 samples) exists.

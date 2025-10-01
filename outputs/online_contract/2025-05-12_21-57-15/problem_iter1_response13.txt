@@ -1,0 +1,72 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer agent setting (actions as (probability vector over outcomes, cost))
+    that explains historical logs of contract offers, principal utilities,
+    and agent accept/reject decisions.
+
+    Parameters
+    ----------
+    v : np.ndarray, shape (5,)
+        Principal's reward vector over 5 outcomes.
+    content : list of dict
+        Each dict has keys 'Contract' (wage vector length 5),
+        'Principal Utility' (float ¡Ý 0 if accepted else 0),
+        'Agent Action' (1 accept or -1 reject).
+
+    Returns
+    -------
+    agent_setting : np.ndarray, shape (n_actions, 6)
+        Rows = actions; columns = 5-dimensional outcome dist + 1 cost¡Ý0.
+    """
+
+    m_outcomes = v.shape[0]
+    logs = pd.DataFrame(content)
+    L = len(logs)
+
+    # Extract contracts, utilities, and agent decisions
+    contracts = np.vstack(logs['Contract'].to_numpy())
+    p_utilities = logs['Principal Utility'].to_numpy()
+    agent_actions = logs['Agent Action'].to_numpy()
+
+    # We want to explain data with a set of agent actions A:
+    # Each action a: probability vector p_a over 5 outcomes (sum=1),
+    # and cost c_a ¡Ý 0.
+
+    # Constraints from logs:
+    # For accepted logs l: exists a action a s.t
+    #   u_agent(l,a) = p_a @ w_l - c_a ¡Ý 0   (accept IR)
+    #   principal utility = (v - w_l) @ p_a ¡Ý 0 (consistent with given utility)
+    #
+    # For rejected logs l:
+    #   For all a: u_agent(l,a) = p_a @ w_l - c_a < 0  (agent utility negative)
+
+    # Step 1: Cluster accepted logs based on their contracts to guess action groups
+
+    accept_idx = np.where(agent_actions == 1)[0]
+    reject_idx = np.where(agent_actions == -1)[0]
+
+    if len(accept_idx) == 0:
+        # No accept logs ¡ú trivial setting
+        # One action: uniform dist, zero cost
+        uniform_p = np.ones(m_outcomes) / m_outcomes
+        return np.hstack([uniform_p, [0.0]]).reshape(1, -1)
+
+    accepted_contracts = contracts[accept_idx]
+
+    # Use Agglomerative Clustering (more adaptive) to group accepted contracts
+    max_actions = min(10, len(accepted_contracts))
+    linkage = 'ward'
+    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=3.0, linkage=linkage)
+    labels = clustering.fit_predict(accepted_contracts)
+
+    n_actions = labels.max() + 1
+
+    # Step 2: For each cluster (action), estimate agent outcome distribution p_a and cost c_a:
+    # Objective: 

@@ -1,0 +1,53 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:44: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}. These will be passed to HiGHS verbatim.
+  bounds = [(0.0, 1.0) for _ in range(m_outcomes)]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 4.359982705557926
+→ Inferred agent&principal utility:    0.25376070279404517 1.2156647302091648
+→ Agent and principal score:    0.25376070279404517 2.8220710062572154
+[*] Instance 0: 3.0758317090512604
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:44: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}. These will be passed to HiGHS verbatim.
+  bounds = [(0.0, 1.0) for _ in range(m_outcomes)]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 1.7505910842968155
+→ Inferred agent&principal utility:    0.5517743421192494 1.7481872676274857
+→ Agent and principal score:    0.5517743421192494 0.5517743321192499
+[*] Instance 1: 1.1035486742384992
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:44: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}. These will be passed to HiGHS verbatim.
+  bounds = [(0.0, 1.0) for _ in range(m_outcomes)]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 2.587192301426591
+→ Inferred agent&principal utility:    0.7253926151742549 2.8428601232048307
+→ Agent and principal score:    0.7253926151742549 0.725392605174255
+[*] Instance 2: 1.4507852203485099
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:44: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}. These will be passed to HiGHS verbatim.
+  bounds = [(0.0, 1.0) for _ in range(m_outcomes)]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 3.621287696411274
+→ Inferred agent&principal utility:    0.623020050534409 3.5401122670655933
+→ Agent and principal score:    0.623020050534409 0.6230200405344091
+[*] Instance 3: 1.246040091068818
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_05.pkl with 5 instances.
+→ Best principal utility: 3.4351046687638447
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:44: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}. These will be passed to HiGHS verbatim.
+  bounds = [(0.0, 1.0) for _ in range(m_outcomes)]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-13}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 3.7358855835552656
+→ Inferred agent&principal utility:    -0.5767155030299449 3.9074345291929378
+→ Agent and principal score:    100 -0.4723298604290931
+[*] Instance 4: 99.5276701395709
+[*] Average:
+21.280775166855598

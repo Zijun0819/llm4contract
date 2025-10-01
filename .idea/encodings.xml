@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/outputs/online_contract/2025-05-12_21-57-15/online_contract.log" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/outputs/online_contract/2025-05-12_21-57-15/problem_iter1_response12.txt" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/outputs/online_contract/2025-05-12_21-57-15/problem_iter1_response13.txt" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/outputs/online_contract/2025-05-12_21-57-15/problem_iter1_response2.txt" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/outputs/online_contract/2025-05-13_09-39-37/online_contract.log" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/outputs/online_contract/2025-05-13_14-54-05/online_contract.log" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/outputs/online_contract_edgeAI/2025-06-05_15-49-23/online_contract_edgeAI.log" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/outputs/online_contract_edgeAI/2025-06-05_16-06-03/online_contract_edgeAI.log" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/problems/online_contract_edgeAI/gpt_.py" charset="GBK" />
+  </component>
+</project>

@@ -1,0 +1,1 @@
+Cluster beliefs using GMM; infer costs as min accepted utility per cluster. Refine with rejection logs via LP to enforce IR/IC. Adjust costs dynamically to minimize violations.

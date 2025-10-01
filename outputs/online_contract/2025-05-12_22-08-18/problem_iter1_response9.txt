@@ -1,0 +1,124 @@
+```python
+import numpy as np
+from sklearn.cluster import KMeans
+from scipy.optimize import linprog
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting (action distribution over outcomes + cost)
+    to explain the historical contract interaction logs, under agent IR & IC constraints.
+    This version:
+    - Uses clustering on accepted contracts weighted by utilities.
+    - Uses rejection logs to define lower bounds on costs.
+    - Iteratively refines the cost to fit IC conditions (accept > reject utility).
+    """
+
+    m = v.shape[0]
+    L = len(content)
+
+    # Separate accepted and rejected logs
+    accepted = [log for log in content if log['Agent Action'] == 1]
+    rejected = [log for log in content if log['Agent Action'] == -1]
+    if len(accepted) == 0:
+        raise ValueError("No accepted contracts to infer from.")
+
+    # Extract contracts, utilities from accepted logs
+    contracts_acc = np.array([log['Contract'] for log in accepted])  # shape (A, m)
+    utilities_acc = np.array([log['Principal Utility'] for log in accepted])  # shape (A,)
+
+    # Step 1: Construct features for clustering:
+    # Normalize contracts by utilities to capture relative preferences and shape of induced distributions.
+    weights = utilities_acc / (np.sum(utilities_acc) + 1e-16)
+    # Use accepted contracts weighted by utilities for clustering
+    # Why cluster contracts? Because each distribution p combined with v * p - c defines acceptance
+    # Let's cluster contracts by their payment shape to infer outcome distributions
+    n_clusters = min(10, max(2, len(accepted)//10))  # adaptive number of actions candidate
+
+    # Cluster contracts on payment vector space
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=20)
+    kmeans.fit(contracts_acc, sample_weight=weights)
+    centers = kmeans.cluster_centers_  # Found prototypical contracts
+
+    # Step 2: For each cluster center (contract prototype), approximate outcome distribution p
+    # Solve LP: given wage w (payment vector), find p ≥0, sum p=1 with p @ v = w @ p (agent's expected payment)
+    # Actually, for given w = contract payment, p reflects agent's probability distribution over outcomes,
+    # but w does not necessarily equal v's expected payout. Instead, 
+    # approximate p that minimizes distance ||p @ v - w @ p|| or simply recover p from maximizing p @ w under v fixed.
+    # Because v is principals reward per outcome, but contract payments w are given. We infer p consistent with w.
+
+    # Instead, recover p as the probability distribution over outcomes that matches the "pattern" of w, under constraints:
+    # - p is a probability distribution (>=0, sum=1)
+    # - p explains acceptance decision = p @ w - c ≥ 0 
+
+    # For each center contract w, infer a plausible p maximizing expected payment p @ w, with restriction p @ v close to agent action expected.
+    # Choose p that maximizes agent utility under w (ignore cost first).
+    p_candidates = []
+    for w in centers:
+        # Since p is unknown and we have only the payment vector w,
+        # find p that maximizes p @ w subject to sum(p)=1, p≥0
+        # Maximum attained by putting all mass on max payout outcome:
+        j = np.argmax(w)
+        p = np.zeros(m)
+        p[j] = 1.0
+        p_candidates.append(p)
+    p_candidates = np.array(p_candidates)
+
+    # Step 3: Estimate costs for each action from assigned accepted logs:
+    # Assign each accepted log to cluster with minimal squared distance w.r.t. contract payment vector
+    assigned = kmeans.predict(contracts_acc)
+    c = np.zeros(n_clusters)
+    eps = 1e-8
+
+    # For each cluster, cost = min (agent expected payment under this cluster contracts) over assigned contracts
+    # Because IR implies agent payout - cost ≥ 0, cost ≤ agent payout; choose smallest to keep costs low.
+    for i in range(n_clusters):
+        idx = np.where(assigned == i)[0]
+        if len(idx):
+            contract_subset = contracts_acc[idx]  # shape (#idx, m)
+            # agent expected payment for p_candidates[i]
+            payments = contract_subset @ p_candidates[i]
+            c[i] = payments.min()  # minimal expected payment assigned to action i
+            # ensure non-negative cost
+            if c[i] < 0:
+                c[i] = 0
+        else:
+            c[i] = 0
+
+    # Step 4: Adjust costs for rejections to satisfy IC constraints:
+    # For rejected logs: agent utility must be negative => max_a (p_a@w - c_a) < 0 for rejection contracts w
+
+    if rejected:
+        contracts_rej = np.array([log['Contract'] for log in rejected])  # shape (R,m)
+
+        # Agent utilities matrix: shape (n_clusters, R)
+        utilities_rejected = p_candidates @ contracts_rej.T - c[:, None]  # shape (n_clusters,R)
+
+        # Enforce max over actions for each rejected contract < 0 by raising costs c if needed
+        max_util_per_rej = utilities_rejected.max(axis=0)  # length R
+        # Any rejected contract with max utility ≥ 0 violates rejection condition.
+
+        violations = max_util_per_rej >= 0
+        n_violations = np.sum(violations)
+
+        # If violation occurs, we raise cost c to eliminate violation minimally
+        for _ in range(5):  # small fixed point iteration to fix costs
+            utilities_rejected = p_candidates @ contracts_rej.T - c[:, None]
+            max_util_per_rej = utilities_rejected.max(axis=0)
+            violations = max_util_per_rej >= 0
+            if not np.any(violations):
+                break
+            for r_idx, violated in enumerate(violations):
+                if violated:
+                    # For the rejected contract r_idx find action a maxing utility
+                    a_idx = np.argmax(utilities_rejected[:, r_idx])
+                    # Increase cost for action a_idx by approximately max_util_per_rej[r_idx] + small margin
+                    c[a_idx] += max_util_per_rej[r_idx] + 1e-3
+
+        # Ensure cost non-negativity
+        c = np.maximum(c, 0)
+
+    # Step 5: Return agent setting: each row is [p1,...,p5, cost] for each action
+    agent_setting = np.hstack((p_candidates, c[:, None]))
+    return agent_setting
+```

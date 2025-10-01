@@ -1,0 +1,10 @@
+Use balanced clustering (min_samples=3), adaptive cost increments, robust LP tolerances, and strict normalization for improved IR/IC satisfaction.
+Use min_samples=1 in DBSCAN, finer eps range, smaller cost increments, and more iterations for smoother, accurate cost refinement.
+Use balanced clustering (min_samples=3), tighter LP tolerances, adaptive cost increments, and robust noise assignment for improved inference.
+Use finer clustering eps grid, stricter cost initialization, and tighter convergence criteria for improved IR and IC satisfaction.
+Use tighter LP tolerances, finer clustering eps, robust noise assignment, adaptive cost increments, and strict probability normalization.
+Use finer clustering eps and min_samples; tighten LP tolerances; robust tie-breaking for noise; adaptive cost increments; early stopping.
+Use smaller min_samples in clustering, finer eps range, smoother cost increments, and stricter normalization for stability.
+Use balanced DBSCAN parameters, tighter LP tolerances, robust noise assignment, adaptive cost increments, and strict normalization.
+Use smaller DBSCAN min_samples, finer eps grid, smoother cost updates, and stricter normalization for stable, accurate agent inference.
+Use finer clustering eps, tighter LP tolerances, smaller cost increments, and robust noise assignment for stable, precise agent inference.

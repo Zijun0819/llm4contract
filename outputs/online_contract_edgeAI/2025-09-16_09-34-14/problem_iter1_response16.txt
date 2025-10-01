@@ -1,0 +1,72 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    n_candidates = 7
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def mini_lp_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        m = len(w)
+        A_eq = [np.ones(m), v - w]
+        b_eq = [1.0, u]
+        bounds = [(0, 1)] * m
+        res = linprog(w, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    for index, log in content.iterrows():
+        if log['Agent Action'] == 1:
+            w_i = log['Contract']
+            u_i = log['Principal Utility']
+            p_i = mini_lp_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+
+    if not candidate_ps:
+        raise ValueError("No valid accepted logs to infer agent strategies.")
+
+    all_p = np.array(candidate_ps)
+
+    pca = PCA(n_components=0.95, random_state=0)
+    all_p_pca = pca.fit_transform(all_p)
+
+    kmeans = KMeans(n_clusters=n_candidates, random_state=0, n_init=10).fit(all_p_pca)
+    labels = kmeans.labels_
+    p0 = kmeans.cluster_centers_
+
+    p0_inv = pca.inverse_transform(p0)
+
+    assigns = np.full(L, -1, dtype=int)
+    for i, log in content.iterrows():
+        if log['Agent Action'] == 1:
+            w = log['Contract']
+            p_pca = pca.transform([w])
+            assigns[i] = int(np.argmax(np.dot(p0, p_pca.T)))
+
+    c_ir = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        idx = np.where(assigns == a)[0]
+        if idx.size > 0:
+            wages = np.array([content.iloc[i]['Contract'] for i in idx]).T
+            c_ir[a] = np.dot(p0_inv[a], wages.min(axis=1))
+        else:
+            c_ir[a] = 0.0
+
+    rej_idx = [i for i, log in content.iterrows() if log['Agent Action'] == -1]
+    if rej_idx:
+        wages_rej = np.array([content.iloc[i]['Contract'] for i in rej_idx]).T
+        rej_utils = np.dot(p0_inv, wages_rej)
+        c_rej = np.max(rej_utils, axis=1)
+    else:
+        c_rej = np.zeros(n_candidates)
+
+    c_init = np.maximum(c_ir, c_rej)
+
+    agent_setting = np.hstack([p0_inv, c_init[:, np.newaxis]])
+    return agent_setting
+```

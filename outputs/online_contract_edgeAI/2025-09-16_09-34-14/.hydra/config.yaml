@@ -1,0 +1,39 @@
+n_instances: 5
+max_fe: 200
+pop_size: 10
+init_pop_size: 30
+mutation_rate: 0.5
+timeout: 20
+diversify_init_pop: true
+problem:
+  problem_name: online_contract_edgeAI
+  obj_type: min
+  func_name: agent_solver
+  description: Inferring a valid agent setting via "agent_solver" that satisfies all
+    historical interaction logs between the principal and agent regarding an online
+    contract design problem.
+  n_actions: 7
+  m_outcomes: 12
+  n_actions_l:
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  m_outcomes_l:
+  - 2
+  - 4
+  - 6
+  - 8
+  - 10
+  - 12
+  num_contracts: 100
+  reward_subs: 0.00016
+  alpha_1: 0.0005
+  cost_train_ai: 0.00012
+llm_client:
+  _target_: utils.llm_clients.ollama.OllamaClient
+  model: meta-llama/Llama-3.3-70B-Instruct-Turbo
+  temperature: 0.8
+  api_key: null

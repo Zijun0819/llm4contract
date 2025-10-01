@@ -1,0 +1,10 @@
+Optimize GaussianMixture, balance candidates, refine parameters.
+Optimize n_components using AIC.
+Optimize GaussianMixture components.
+Refine GMM parameters with multiple initializations.
+Optimize n_components in GaussianMixture.
+Optimize GaussianMixture components.
+Refine parameters, balance candidates, avoid overfitting.
+Balance model complexity to avoid overfitting.
+Select optimal n_components using AIC.
+Optimize GaussianMixture components using AIC.

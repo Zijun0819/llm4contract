@@ -1,0 +1,1 @@
+Refine GMM clustering with density-weighted centers; enforce strict IR/IC via penalized SLSQP. Tighten tolerances, validate utility bounds iteratively, and ensure costs strictly separate accepted/rejected contracts.

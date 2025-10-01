@@ -1,0 +1,28 @@
+Hints:
+
+1.  Solve for p directly using LP.
+2.  Consider principal utility in finding p.
+3.  Improve cost initialization.
+
+LP-based p inference, consider rejected contracts in cost estimation, and increase `n_candidates`.
+
+Consider principal utility in `mini_lp_p`. Refine cost estimation using accepted contracts' utilities. Reduce `n_candidates`.
+
+Focus on efficient LP solving, incorporating principal utility, and refining cost initialization using both accepted and rejected contracts.
+
+Better hints:
+1. Use `SLSQP` for probability simplex constraints.
+2. Normalize probabilities.
+3. Adapt `n_candidates` to data size.
+4. Directly minimize utility for accepted contracts.
+
+Use K-means for clustering, check strict consistency, and handle edge cases with a default setting.
+
+Use GMM instead of K-means, initialize costs better, and consider more candidate distributions.
+
+LP solves for optimal beliefs. Clustering refines beliefs. Costs reflect rejection behavior, ensuring IR.
+
+Focus on utility-tied distribution generation, K-means initialization, and cost calibration against both accept/reject actions.
+
+Prioritize accepted contract data. Initialize costs more carefully using both accepted and rejected contracts. Increase `n_candidates`.
+

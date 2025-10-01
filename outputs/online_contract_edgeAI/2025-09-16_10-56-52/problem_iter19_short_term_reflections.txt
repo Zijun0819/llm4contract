@@ -1,0 +1,10 @@
+Use weighted clustering, refined initial costs, and simpler penalty functions.
+Refine candidate probabilities from accepted logs; use weighted GMM centers; enforce IR/IC with stricter tolerances.
+Ensure precise probability normalization; include cost non-negativity in penalty to boost accuracy.
+Refine costs with tighter IR enforcement; use stricter tolerance settings.
+Incorporate more precise penalty terms and optimize GMM initialization with rejected logs.
+Consider sample weights, refine costs from rejection logs, and increase tolerance for stability.
+Use tighter tolerances, refine cost initialization, and add cost constraint.
+Use adaptive clustering, refined cost initialization, and balanced penalties for better inference.
+Refine initial cost estimates using rejection logs to tighten constraints.
+GMM with weighted samples and refined cost thresholds improves fit.

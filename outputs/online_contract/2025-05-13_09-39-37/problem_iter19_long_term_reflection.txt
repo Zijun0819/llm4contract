@@ -1,0 +1,1 @@
+Use finer DBSCAN eps with larger min_samples; enforce stricter LP tolerances and rigorous normalization; apply adaptive, smaller cost increments; assign noise via similarity; increase iterations with early stopping on cost stability; ensure clustering granularity balances robustness and accuracy.

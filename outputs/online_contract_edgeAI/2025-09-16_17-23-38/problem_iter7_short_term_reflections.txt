@@ -1,0 +1,34 @@
+1. Use PCA for dimensionality reduction before clustering to improve efficiency and reduce noise.  
+2. Map cluster centers back to original space using closest points for better representation.  
+3. Compute IR costs using minimum wages across outcomes to ensure tighter constraints.  
+4. Set rejected contract costs to a large negative value to handle infeasible cases.  
+5. Apply adaptive slack and regularization to ensure valid, positive costs for all actions.
+1. **Fix the number of candidate actions** (`n_candidates = 10`) for more stable inference, rather than adaptive clustering which can be unreliable.
+
+2. **Improve cost estimation** by using `min(wages)` for IR constraints to ensure tighter, more realistic cost bounds.
+
+3. **Increase `n_init` in KMeans** to 20 for better initialization and more consistent clustering results.
+
+4. **Simplify cost computation** by removing over-complicated adjustments; ensure non-negativity with a small slack.
+
+5. **Normalize probability distributions** after clustering to maintain validity of outcome probabilities.
+1. **Fix probability normalization**: Ensure `p0` rows sum to 1 after clustering and before cost computation.  
+2. **Stabilize cost estimation**: Replace `-np.inf` in `c_rej` with a small negative value for numerical robustness.  
+3. **Improve clustering**: Use consistent `n_candidates` and avoid dimensionality reduction to preserve information.  
+4. **Accurate assignments**: Compute action assignments using expected utilities for all contracts explicitly.  
+5. **Enhance LP feasibility**: Normalize LP solutions properly to maintain valid probability distributions.
+1. **Avoid PCA** for probability recovery; directly cluster LP solutions for better accuracy.  
+2. **Refine cost estimation** using tighter IR/IC constraints and avoid over-regularization.  
+3. **Ensure strictly positive costs** for accepted actions to maintain incentive compatibility.
+Use PCA for dimensionality reduction before clustering to improve agent setting inference.
+Use adaptive clustering, PCA for dimensionality reduction, and ensure non-negative costs with slack.
+Use more representative cluster centers, ensure probability normalization, and tighter cost bounds for better agent setting inference.
+1. **Improve PCA handling** for better dimensionality reduction stability.  
+2. **Refine cost computation** with tighter slack and regularization.  
+3. **Enhance clustering interpretation** by mapping back to original space accurately.
+1. Use PCA for stable dimensionality reduction.  
+2. Apply elbow method for adaptive clustering.  
+3. Enforce IR/IC constraints strictly.  
+4. Augment rejected contract constraints for robustness.  
+5. Normalize probabilities carefully to avoid numerical issues.
+Use adaptive clustering, ensure non-negative costs, and handle numerical stability for better agent setting inference.

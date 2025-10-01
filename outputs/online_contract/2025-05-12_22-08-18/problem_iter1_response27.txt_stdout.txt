@@ -1,0 +1,44 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+→ Best action index:    98
+→ Best contract w:       [0.94877393 0.         0.         4.06570984 4.98148626]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 5.437940753288817
+→ Best action index:    3
+→ Best contract w:       [0.         0.         0.         3.99131994 0.        ]
+[*] Instance 0: 100.53992038811832
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+→ Best action index:    99
+→ Best contract w:       [0.         0.         0.         1.12446972 3.61685831]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 3.6621712076529076
+→ Best action index:    5
+→ Best contract w:       [0.         0.         0.         0.         2.42849419]
+[*] Instance 1: 100.73658993520282
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+→ Best action index:    99
+→ Best contract w:       [0.         0.         0.         3.94248941 4.68859719]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+→ Best principal utility: 4.499170071753456
+→ Best action index:    0
+→ Best contract w:       [0.         0.         0.         0.         3.84925141]
+[*] Instance 2: 99.82776158647414
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+→ Best action index:    99
+→ Best contract w:       [0.77289566 0.         0.         0.         5.2899921 ]
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 150, in <module>
+    obj = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 101, in evaluate_llm
+    inferred_agent_setting = llm_agent_solver(v, content)
+  File "E:\Coding\pythonProject\llm4contract\problems\gpt.py", line 192, in agent_solver_v2
+ValueError: Cannot find feasible agent setting consistent with all logs.

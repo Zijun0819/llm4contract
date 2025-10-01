@@ -1,0 +1,1 @@
+Cluster contracts by payments and utilities with adaptive weighting; enforce strict IR/IC/rejection constraints using tight LP slacks; separate and iteratively refine distributions and costs; add dummy actions for outliers; normalize probabilities precisely; reduce clusters adaptively for stability and parsimonious models.

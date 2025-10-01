@@ -1,0 +1,54 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.7321 seconds
+The inferred contract is [[ 8.33588396e-02  8.33383146e-02  8.33155185e-02  8.33034690e-02
+   8.33267574e-02  8.33180340e-02  8.33403495e-02  8.33547244e-02
+   8.33415648e-02  8.33481228e-02  8.33126039e-02  8.33417015e-02
+  -2.62359666e-05]]
+→ Best principal utility: 0.0005147658895805235
+→ Inferred agent&principal utility:    0.0 0.0004126474770936832
+→ Agent and principal score:    0 0.00020674168782769934
+[*] Instance 0: 0.00020674168782769934
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.1043 seconds
+The inferred contract is [[8.33465254e-02 8.33279750e-02 8.33066096e-02 8.33199588e-02
+  8.32987223e-02 8.33425280e-02 8.33533370e-02 8.33445163e-02
+  8.33512102e-02 8.33341298e-02 8.33299761e-02 8.33445116e-02
+  1.12439820e-06]]
+→ Best principal utility: 0.0005136487605182105
+→ Inferred agent&principal utility:    0.0 0.0004126474770936832
+→ Agent and principal score:    0 0.00020674168782769934
+[*] Instance 1: 0.00020674168782769934
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.0970 seconds
+The inferred contract is [[ 8.33549960e-02  8.33355202e-02  8.33208036e-02  8.33008375e-02
+   8.33125770e-02  8.33410700e-02  8.33452839e-02  8.33481448e-02
+   8.33484142e-02  8.33186478e-02  8.33289436e-02  8.33447613e-02
+  -3.41644296e-05]]
+→ Best principal utility: 0.000514766956322357
+→ Inferred agent&principal utility:    0.0 0.0004126474770936832
+→ Agent and principal score:    0 0.00020674168782769934
+[*] Instance 2: 0.00020674168782769934
+[*] Average:
+0.00020674168782769932

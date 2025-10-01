@@ -1,0 +1,28 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+→ Best principal utility: 0.7883100921596855
+→ Inferred agent&principal utility:    -0.9304013963500727 2.399826829353283
+→ Agent and principal score:    100 1.637908907113097
+[*] Instance 0: 101.6379089071131
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+→ Best principal utility: 1.1382780245001098
+→ Inferred agent&principal utility:    -0.9494913999389882 1.8499778801806441
+→ Agent and principal score:    100 0.4499837195660914
+[*] Instance 1: 100.44998371956609
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+→ Best principal utility: 1.0412106429923116
+→ Inferred agent&principal utility:    -1.1479775407163115 2.1611686087948474
+→ Agent and principal score:    100 1.4070841195842383
+[*] Instance 2: 101.40708411958424
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+→ Best principal utility: -inf
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 153, in <module>
+    obj = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 107, in evaluate_llm
+    agent_u = np.dot(p, inferred_contract) - c
+TypeError: unsupported operand type(s) for *: 'float' and 'NoneType'

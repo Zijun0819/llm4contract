@@ -1,0 +1,73 @@
+```python
+import numpy as np
+import pandas as pd
+from sklearn.cluster import AgglomerativeClustering
+from scipy.optimize import linprog, minimize
+from scipy.spatial.distance import cdist
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    accepted_contracts = []
+    accepted_utilities = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            accepted_contracts.append(np.array(log['Contract']))
+            accepted_utilities.append(log['Principal Utility'])
+    if not accepted_contracts:
+        accepted_contracts = [np.random.dirichlet(np.ones(len(v))) for _ in range(10)]
+        accepted_utilities = [0.0] * 10
+    X = np.vstack(accepted_contracts)
+    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=0.01, metric='euclidean').fit(X)
+    n_candidates = clustering.n_clusters_
+    if n_candidates < 3:
+        n_candidates = 3
+    labels = clustering.labels_
+    unique_labels = np.unique(labels)
+    p0 = np.array([X[labels == lbl].mean(axis=0) for lbl in unique_labels])
+    def refine_action(center, contracts, utilities):
+        def objective(p):
+            return np.linalg.norm(p - center)
+        constraints = []
+        for w, u in zip(contracts, utilities):
+            constraints.append({'type': 'ineq', 'fun': lambda p, w=w, u=u: p @ (v - w) - u})
+        bounds = [(0, 1)] * len(v)
+        cons = [{'type': 'eq', 'fun': lambda p: np.sum(p) - 1}]
+        cons.extend(constraints)
+        res = minimize(objective, center, method='SLSQP', bounds=bounds, constraints=cons)
+        return res.x if res.success else center
+    refined_centers = []
+    for lbl in unique_labels:
+        idxs = np.where(labels == lbl)[0]
+        contracts_sub = [accepted_contracts[i] for i in idxs]
+        utilities_sub = [accepted_utilities[i] for i in idxs]
+        refined = refine_action(p0[lbl], contracts_sub, utilities_sub)
+        refined_centers.append(refined)
+    p0_refined = np.vstack(refined_centers)
+    n_candidates = p0_refined.shape[0]
+    assigns = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w = np.array(log['Contract'])
+            utils = p0_refined @ w
+            assigns.append(np.argmax(utils))
+        else:
+            assigns.append(-1)
+    assigns = np.array(assigns)
+    c_vals = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        indices = np.where(assigns == a)[0]
+        if indices.size > 0:
+            wages = np.array([content[i]['Contract'] for i in indices])
+            min_util = np.min(p0_refined[a] @ wages.T)
+            c_vals[a] = max(0, min_util)
+        else:
+            c_vals[a] = 0.0
+    rej_indices = np.where(assigns == -1)[0]
+    if rej_indices.size > 0:
+        rej_wages = np.array([content[i]['Contract'] for i in rej_indices]).T
+        max_rej_utils = np.max(p0_refined @ rej_wages, axis=1)
+        for a in range(n_candidates):
+            if max_rej_utils[a] > c_vals[a]:
+                c_vals[a] = max_rej_utils[a]
+    agent_setting = np.hstack([p0_refined, c_vals.reshape(-1, 1)])
+    return agent_setting
+```

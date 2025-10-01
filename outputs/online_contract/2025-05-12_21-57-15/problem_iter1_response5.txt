@@ -1,0 +1,161 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Improved agent_solver that:
+    - Uses outcome distributions inferred from accepted contracts via LPs solving for agent expected utilities.
+    - Uses hierarchical clustering to adaptively determine number of agent types.
+    - Constructs agent types with (probability distribution over outcomes, cost), satisfying IR and IC constraints from logs.
+    """
+
+    m_outcomes = len(v)
+    L = len(content)
+
+    # Parse logs into structured arrays for efficiency
+    contracts = np.array([log['Contract'] for log in content])
+    agent_actions = np.array([log['Agent Action'] for log in content])
+    principal_utils = np.array([log['Principal Utility'] for log in content])
+
+    # Step 0: Define function to find an agent distribution p given contract and expected utility threshold
+    def infer_p_given_contract_and_u(w: np.ndarray, u: float) -> np.ndarray | None:
+        """
+        Solve LP to find distribution over outcomes p, s.t.:
+           p has sum 1 and p >= 0,
+           expected payment p@w = u,
+        minimizing ||p - uniform||_2 squared via objective approximation (here use linprog minimizing sum p_i for feasibility)
+        """
+        # linprog to solve feasibility:
+        # Constraints: sum p_i =1, p@w = u, p_i >=0
+        # Objective: arbitrary zero vector to find feasible p
+        A_eq = np.vstack([np.ones(m_outcomes), w])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1)]*m_outcomes
+
+        res = linprog(np.zeros(m_outcomes), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p = res.x
+            # numerical stability fixes
+            p[p < 0] = 0
+            p = p / p.sum()
+            return p
+        return None
+
+    # Step 1: For accepted contracts (agent_action ==1), infer possible p and estimated agent expected utility u_agent:
+    # agent expected utility u_agent = expected payment - cost >= 0
+    # We don't know cost, but principal utility = v @ p - agent expected payment
+    # We only have principal utility and wages; hence:
+    # principal utility = v @ p - (p @ contract - cost) = v@p - agent utility
+    # So agent utility = p @ contract - cost = v @ p - principal utility
+
+    # Our goal here: guess p from wages and agent must have nonnegative expected utility.
+
+    accepted_idx = np.where(agent_actions == 1)[0]
+    inferred_ps = []
+    u_agents = []
+
+    # We'll guess p by searching p that satisfies: p@contract - cost >= 0,
+    # but cost unknown, rewrite cost = p@contract - u_agent,
+    # since principal util = v@p - u_agent, then u_agent = v@p - principal_util
+
+    # We try each accepted contract's log, try to guess p that fits wages and principal utility.
+
+    for i in accepted_idx:
+        w = contracts[i]
+        p_guess = infer_p_given_contract_and_u(w, u=1.0)  # try expected payment =1 to start roughly
+        if p_guess is None:
+            # fallback uniform
+            p_guess = np.ones(m_outcomes) / m_outcomes
+        # Adjust p_guess so p_guess@w ~ (v@p_guess - principal_util)
+        # Approximate agent expected utility = (v@p - principal_util)
+        def obj(p):
+            return abs((p @ w) - ((v @ p) - principal_utils[i]))
+        # Use projected gradient descent / simple routine for better p near p_guess
+        p_curr = p_guess.copy()
+        for _ in range(5):
+            # gradient wrt p: grad = w - v (for absolute we use sign)
+            grad = np.sign((p_curr @ w) - ((v @ p_curr) - principal_utils[i])) * (w - v)
+            p_new = p_curr - 0.1*grad
+            p_new = np.clip(p_new, 1e-12, None)
+            p_new /= p_new.sum()
+            p_curr = p_new
+        inferred_ps.append(p_curr)
+        # compute cost for this action: cost = p@contract - agent utility = p@contract - (v@p - principal utility)
+        cost_i = (p_curr @ w) - ((v @ p_curr) - principal_utils[i])
+        u_agents.append((p_curr, cost_i))
+
+    # Stack all inferred p and costs
+    inferred_ps_array = np.array([x[0] for x in u_agents])
+    costs_array = np.array([max(0, x[1]) for x in u_agents])  # costs must be >=0
+
+    # Step 2: Clustering inferred ps to get agent types - hierarchical clustering with distance metric = L1 norm (manhattan)
+    # Determine n_clusters adaptively using a distance threshold
+    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=0.1, affinity='manhattan', linkage='average')
+    cluster_labels = clustering.fit_predict(inferred_ps_array)
+
+    agent_setting_candidates = []
+    for cluster_id in np.unique(cluster_labels):
+        mask = cluster_labels == cluster_id
+        cluster_ps = inferred_ps_array[mask]
+        cluster_costs = costs_array[mask]
+
+        # Aggregate p by mean, cost by max to satisfy IR constraints safely
+        p_agg = cluster_ps.mean(axis=0)
+        p_agg = np.clip(p_agg, 1e-12, None)
+        p_agg = p_agg / p_agg.sum()
+
+        cost_agg = max(0, cluster_costs.max())
+
+        agent_setting_candidates.append(np.append(p_agg, cost_agg))
+
+    agent_setting_candidates = np.array(agent_setting_candidates)
+
+    # Step 3: Verify IC constraints for rejection logs:
+    # For rejected contracts, agent utility must be negative for all actions:
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    if len(rejected_idx) > 0:
+        rejection_contracts = contracts[rejected_idx]
+        # For each action, check max p@w - cost over all rejected contracts < 0
+        # If violation found, adjust cost upwards
+        for i, action in enumerate(agent_setting_candidates):
+            p = action[:m_outcomes]
+            cost = action[-1]
+            utilities = rejection_contracts @ p - cost  # shape (#reject contracts,)
+            max_util = utilities.max()
+            if max_util >= 0:
+                # Increase cost minimally to make max_util < 0
+                new_cost = cost + max_util + 1e-6
+                agent_setting_candidates[i, -1] = new_cost
+
+    # Step 4: Double check all accepted contracts' utility ¡Ý 0 for some action (IC)
+    # For each accepted log, ensure there exists an agent action whose expected utility¡Ý0
+    for i in accepted_idx:
+        w = contracts[i]
+        feasible = False
+        for action in agent_setting_candidates:
+            p = action[:m_outcomes]
+            cost = action[-1]
+            utility = (p @ w) - cost
+            if utility >= -1e-8:  # numerical tolerance
+                feasible = True
+                break
+        if not feasible:
+            # Add a new action based on this log to fit acceptance strictly
+            # Infer p by direct LP, cost approx zero or min feasible
+            p_new = infer_p_given_contract_and_u(contracts[i], u=1.0)
+            if p_new is None:
+                p_new = np.ones(m_outcomes)/m_outcomes
+            # cost = p@w - agent expected utility
+            agent_utility = (v @ p_new) - principal_utils[i]
+            cost_new = max(0, p_new @ contracts[i] - agent_utility)
+            new_action = np.append(p_new, cost_new)
+            agent_setting_candidates = np.vstack([agent_setting_candidates, new_action])
+
+    # Final agent setting matrix: each row - [probabilities..., cost¡Ý0]
+    return agent_setting_candidates
+```

@@ -1,0 +1,97 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import minimize, linprog
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from itertools import combinations
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = len(v)
+    L = len(content)
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        return np.array([[1/m_outcomes] * m_outcomes + [0.0]])
+    
+    def solve_dual_problem(wages, utilities):
+        n_contracts = len(wages)
+        c = np.ones(n_contracts)
+        A_eq = np.array(wages).T
+        b_eq = np.ones(m_outcomes)
+        bounds = [(0, None)] * n_contracts
+        
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            dual_vars = res.x
+            return dual_vars / dual_vars.sum()
+        return None
+    
+    accepted_wages = [log['Contract'] for log in accepted_logs]
+    accepted_utils = [log['Principal Utility'] for log in accepted_logs]
+    
+    mixture_weights = solve_dual_problem(accepted_wages, accepted_utils)
+    if mixture_weights is None:
+        mixture_weights = np.ones(len(accepted_wages)) / len(accepted_wages)
+    
+    base_distribution = np.average(accepted_wages, axis=0, weights=mixture_weights)
+    base_distribution = base_distribution / base_distribution.sum()
+    
+    def generate_perturbations(base_p, n_actions):
+        perturbations = [base_p]
+        
+        for _ in range(n_actions - 1):
+            noise = np.random.dirichlet(np.ones(m_outcomes) * 0.5)
+            alpha = np.random.uniform(0.1, 0.9)
+            perturbed = alpha * base_p + (1 - alpha) * noise
+            perturbations.append(perturbed)
+        
+        return np.array(perturbations)
+    
+    n_actions = min(8, max(3, len(accepted_logs) // 3))
+    candidate_ps = generate_perturbations(base_distribution, n_actions)
+    
+    def optimize_costs(ps):
+        costs = np.zeros(len(ps))
+        
+        for i, p in enumerate(ps):
+            accepted_utilities = [np.dot(p, log['Contract']) for log in accepted_logs]
+            rejected_utilities = [np.dot(p, log['Contract']) for log in rejected_logs]
+            
+            min_accepted = min(accepted_utilities) if accepted_utilities else 0
+            max_rejected = max(rejected_utilities) if rejected_utilities else -np.inf
+            
+            costs[i] = max(0, min_accepted, max_rejected + 1e-6)
+        
+        return costs
+    
+    def refine_distributions(ps, costs):
+        refined_ps = []
+        
+        for i, (p, c) in enumerate(zip(ps, costs)):
+            relevant_logs = [log for log in accepted_logs if np.dot(p, log['Contract']) >= c - 1e-6]
+            
+            if relevant_logs:
+                weights = [1 / (1 + abs(np.dot(p, log['Contract']) - c)) for log in relevant_logs]
+                weights = np.array(weights) / sum(weights)
+                
+                refined_p = np.average([log['Contract'] for log in relevant_logs], axis=0, weights=weights)
+                refined_p = refined_p / refined_p.sum()
+                refined_ps.append(refined_p)
+            else:
+                refined_ps.append(p)
+        
+        return np.array(refined_ps)
+    
+    for iteration in range(3):
+        costs = optimize_costs(candidate_ps)
+        candidate_ps = refine_distributions(candidate_ps, costs)
+    
+    final_costs = optimize_costs(candidate_ps)
+    
+    agent_setting = np.hstack([candidate_ps, final_costs[:, np.newaxis]])
+    
+    return agent_setting
+```

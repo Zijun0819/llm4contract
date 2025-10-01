@@ -1,0 +1,1 @@
+Refine GMM with strict IR/IC bounds; merge and deduplicate clusters. Normalize probabilities; use all logs for cost calibration. Prioritize numerical stability and non-negativity in LP.

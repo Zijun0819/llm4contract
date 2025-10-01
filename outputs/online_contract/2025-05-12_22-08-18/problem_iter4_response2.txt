@@ -1,0 +1,172 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting consistent with historical contract logs under IR and IC constraints.
+
+    Args:
+        v: np.ndarray, shape (5,), principal reward vector.
+        content: list of dicts, each dict with keys:
+            'Contract': list or array of 5 payments,
+            'Principal Utility': float,
+            'Agent Action': int (1 for accept, -1 for reject).
+
+    Returns:
+        np.ndarray of shape (n_actions, 6), each row:
+        [p_1, p_2, p_3, p_4, p_5, cost], where p_i sum to 1 and cost >= 0.
+    """
+    m = v.shape[0]
+    logs = pd.DataFrame(content)
+    contracts = np.vstack(logs["Contract"].values)  # shape (L,5)
+    principal_utils = logs["Principal Utility"].values
+    agent_actions = logs["Agent Action"].values
+    L = len(agent_actions)
+
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    # If no accepted contracts, return trivial uniform action with zero cost
+    if len(accepted_idx) == 0:
+        uniform_p = np.ones(m) / m
+        return np.hstack([uniform_p.reshape(1, -1), np.array([[0.0]])])
+
+    # Step 1: Construct candidate deterministic outcome distributions p
+    # For each accepted contract, place full mass on argmax contract payment(s)
+    candidate_ps = np.zeros((len(accepted_idx), m))
+    for i, idx in enumerate(accepted_idx):
+        w = contracts[idx]
+        max_val = np.max(w)
+        max_positions = np.flatnonzero(np.isclose(w, max_val, atol=1e-12))
+        p = np.zeros(m)
+        p[max_positions] = 1.0 / len(max_positions)
+        candidate_ps[i] = p
+
+    # Step 2: Cluster candidate_ps to get prototypical agent actions
+    max_actions = min(7, len(accepted_idx))  # limit max actions for stability
+    if max_actions == 1:
+        # Only one accepted contract -> single action
+        p_centroids = candidate_ps
+        n_actions = 1
+    else:
+        kmeans = KMeans(n_clusters=max_actions, random_state=42, n_init=20)
+        labels = kmeans.fit_predict(candidate_ps)
+        p_centroids = np.zeros((max_actions, m))
+        for a in range(max_actions):
+            members = candidate_ps[labels == a]
+            if len(members) == 0:
+                # fallback to uniform if empty cluster (unlikely with kmeans)
+                p_centroids[a] = np.ones(m) / m
+            else:
+                centroid = members.mean(axis=0)
+                centroid = np.clip(centroid, 0, None)
+                s = centroid.sum()
+                p_centroids[a] = centroid / s if s > 0 else np.ones(m) / m
+        n_actions = max_actions
+
+    # Step 3: Assign each accepted contract to action maximizing expected wage p_a @ w
+    assigns = np.full(L, -1, dtype=int)
+    for idx in accepted_idx:
+        w = contracts[idx]
+        utilities = p_centroids @ w
+        assigns[idx] = int(np.argmax(utilities))
+
+    # Step 4: Formulate LP to find nonnegative costs c satisfying:
+    # IR: For each accepted contract i assigned to a: c_a <= p_a @ w_i
+    # IC: For accepted i assigned to a and any other action a2 != a:
+    #        c_{a2} - c_a >= p_{a2}@w_i - p_a@w_i
+    # Rejection: For each rejected contract j and any action a:
+    #        c_a >= p_a @ w_j + ε (epsilon small positive)
+    epsilon = 1e-8
+    n = n_actions
+
+    A_ub = []
+    b_ub = []
+
+    # IR constraints: c_a <= min_{i:assigns[i]=a} p_a @ w_i
+    # Implemented as -c_a <= -ub
+    for a in range(n):
+        idxs = np.where(assigns == a)[0]
+        if len(idxs) == 0:
+            continue
+        vals = np.array([p_centroids[a] @ contracts[i] for i in idxs])
+        ub = vals.min()
+        row = np.zeros(n)
+        row[a] = -1.0
+        A_ub.append(row)
+        b_ub.append(-ub)
+
+    # IC constraints:
+    # For each accepted contract i assigned to a, for all a2 != a:
+    # c_{a2} - c_a >= p_{a2}@w_i - p_a@w_i
+    # => -c_{a2} + c_a <= -(p_{a2}@w_i - p_a@w_i)
+    for i in accepted_idx:
+        a = assigns[i]
+        w = contracts[i]
+        p_a_w = p_centroids[a] @ w
+        for a2 in range(n):
+            if a2 == a:
+                continue
+            val = (p_centroids[a2] @ w) - p_a_w
+            row = np.zeros(n)
+            row[a] = 1.0
+            row[a2] = -1.0
+            A_ub.append(row)
+            b_ub.append(-val)
+
+    # Rejection constraints:
+    # For each rejected contract j and action a:
+    # c_a >= p_a @ w_j + epsilon -> -c_a <= -p_a @ w_j - epsilon
+    for j in rejected_idx:
+        w = contracts[j]
+        for a in range(n):
+            val = p_centroids[a] @ w
+            row = np.zeros(n)
+            row[a] = -1.0
+            A_ub.append(row)
+            b_ub.append(-val - epsilon)
+
+    if len(A_ub) > 0:
+        A_ub = np.vstack(A_ub)
+        b_ub = np.array(b_ub)
+    else:
+        A_ub = None
+        b_ub = None
+
+    bounds = [(0, None) for _ in range(n)]
+    c_obj = np.ones(n)  # minimize sum costs for parsimony
+
+    # Solve LP for costs c
+    res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs', options={'presolve': True})
+
+    if not res.success:
+        # fallback: set costs to min IR upper bound or zero if none
+        costs = np.zeros(n)
+        for a in range(n):
+            idxs = np.where(assigns == a)[0]
+            if len(idxs) > 0:
+                vals = np.array([p_centroids[a] @ contracts[i] for i in idxs])
+                costs[a] = vals.min()
+    else:
+        costs = np.clip(res.x, 0, None)
+
+    # Enforce strict rejection utilities < 0 by small slack adjustment
+    if len(rejected_idx) > 0:
+        slack = 1e-6
+        for a in range(n):
+            max_rej_util = max((p_centroids[a] @ contracts[j]) for j in rejected_idx)
+            if costs[a] <= max_rej_util:
+                costs[a] = max_rej_util + slack
+
+    # Normalize probabilities again for safety
+    p_centroids = np.clip(p_centroids, 0, None)
+    sums = p_centroids.sum(axis=1, keepdims=True)
+    sums[sums < 1e-12] = 1.0
+    p_centroids /= sums
+
+    agent_setting = np.hstack([p_centroids, costs.reshape(-1, 1)])
+    return agent_setting
+```

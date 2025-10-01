@@ -1,0 +1,86 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances_argmin_min
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    # Parse content to extract contracts, principal utilities, and actions
+    contracts = np.array(content['Contract'].tolist())
+    principal_utils = content['Principal Utility'].values
+    agent_actions = content['Agent Action'].values
+
+    n_samples, m = contracts.shape
+    n_candidates = max(5, n_samples // 10)  # Adaptive number of candidate actions
+
+    accepted_indices = np.where(agent_actions == 1)[0]
+    rejected_indices = np.where(agent_actions == -1)[0]
+
+    if len(accepted_indices) == 0:
+        raise ValueError("No accepted contracts to infer agent strategies.")
+
+    accepted_contracts = contracts[accepted_indices]
+    accepted_principal_utils = principal_utils[accepted_indices]
+
+    candidate_ps = []
+    for i in range(len(accepted_contracts)):
+        w = accepted_contracts[i]
+        u = accepted_principal_utils[i]
+        # Solve for p such that p * (w - v) >= 0 and sum(p) = 1
+        c = np.zeros(m)
+        A_eq = np.array([np.ones(m), w - v])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            candidate_ps.append(res.x)
+
+    if len(candidate_ps) == 0:
+        raise ValueError("No valid p distributions found from accepted contracts.")
+
+    all_p = np.array(candidate_ps)
+    n_candidates = min(n_candidates, all_p.shape[0])
+
+    # Clustering to find representative actions
+    kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=10).fit(all_p)
+    p_candidates = kmeans.cluster_centers_
+
+    # Normalize to ensure they sum to 1 (should already be, but for safety)
+    p_candidates = p_candidates / p_candidates.sum(axis=1, keepdims=True)
+
+    # Assign each accepted contract to the closest candidate
+    assigns = np.zeros(len(accepted_contracts), dtype=int)
+    for i in range(len(accepted_contracts)):
+        p = candidate_ps[i]
+        dists = np.linalg.norm(p_candidates - p, axis=1)
+        assigns[i] = np.argmin(dists)
+
+    # Compute cost for each candidate action using IR constraint
+    c_ir = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        idx = np.where(assigns == a)[0]
+        if len(idx) > 0:
+            wages = accepted_contracts[idx]  # shape (n, m)
+            # For each outcome, take the minimal wage across contracts for this action
+            min_wages = np.min(wages, axis=0)
+            c_ir[a] = np.dot(p_candidates[a], min_wages)
+        else:
+            c_ir[a] = 0.0
+
+    # Ensure rejection constraints are satisfied
+    c_rej = np.zeros(n_candidates)
+    if len(rejected_indices) > 0:
+        rej_contracts = contracts[rejected_indices]
+        # For each candidate action, find maximum utility it would get from rejected contracts
+        utilities = p_candidates @ rej_contracts.T  # (n_candidates, n_rej)
+        c_rej = np.max(utilities, axis=1)
+
+    # Final cost is the maximum of IR-consistent cost and rejection threshold
+    c_final = np.maximum(c_ir, c_rej)
+
+    # Stack probabilities and costs
+    agent_setting = np.hstack([p_candidates, c_final.reshape(-1, 1)])
+    return agent_setting
+```

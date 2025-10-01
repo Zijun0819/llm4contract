@@ -1,0 +1,115 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import pairwise_distances_argmin_min
+from scipy.spatial.distance import cdist
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver(v: np.ndarray, content: list) -> np.ndarray:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        eye_mat = np.eye(len(v))
+        costs = np.zeros((len(v), 1))
+        return np.hstack([eye_mat, costs])
+    
+    def solve_mini_lp(w, u_principal):
+        m = len(w)
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1, u_principal])
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * m, method='highs')
+        if res.success:
+            return res.x
+        else:
+            return None
+    
+    ps_candidates = []
+    for log in accepted_logs:
+        p_candidate = solve_mini_lp(np.array(log['Contract']), log['Principal Utility'])
+        if p_candidate is not None:
+            ps_candidates.append(p_candidate)
+    
+    if not ps_candidates:
+        eye_mat = np.eye(len(v))
+        costs = np.zeros((len(v), 1))
+        return np.hstack([eye_mat, costs])
+    
+    all_p = np.array(ps_candidates)
+    n_clusters = min(500, len(all_p))
+    
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10).fit(all_p)
+    cluster_centers = kmeans.cluster_centers_
+    cluster_labels = kmeans.labels_
+    
+    action_costs = np.zeros(n_clusters)
+    epsilon = 1e-8
+    for i in range(n_clusters):
+        indices = np.where(cluster_labels == i)[0]
+        if indices.size > 0:
+            wages = np.array([accepted_logs[j]['Contract'] for j in indices])
+            utils = np.sum(wages * cluster_centers[i], axis=1)
+            min_util = np.min(utils)
+            action_costs[i] = max(0, min_util - epsilon)
+    
+    if rejected_logs:
+        rejected_wages = np.array([log['Contract'] for log in rejected_logs])
+        rejected_utils = rejected_wages @ cluster_centers.T
+        max_rejected = np.max(rejected_utils, axis=0)
+        action_costs = np.maximum(action_costs, max_rejected + epsilon)
+    
+    gmm = GaussianMixture(n_components=n_clusters, random_state=42, max_iter=200)
+    gmm.fit(all_p)
+    gmm_means = gmm.means_
+    gmm_labels = gmm.predict(all_p)
+    
+    refined_costs = np.zeros(n_clusters)
+    for i in range(n_clusters):
+        indices = np.where(gmm_labels == i)[0]
+        if indices.size > 0:
+            wages = np.array([accepted_logs[j]['Contract'] for j in indices])
+            utils = np.sum(wages * gmm_means[i], axis=1)
+            min_util = np.min(utils)
+            refined_costs[i] = max(0, min_util - epsilon)
+        else:
+            refined_costs[i] = 0.0
+    
+    if rejected_logs:
+        rejected_utils_gmm = rejected_wages @ gmm_means.T
+        max_rejected_gmm = np.max(rejected_utils_gmm, axis=0)
+        refined_costs = np.maximum(refined_costs, max_rejected_gmm + epsilon)
+    
+    final_centers = gmm_means
+    final_costs = refined_costs
+    
+    distances = cdist(cluster_centers, gmm_means, 'euclidean')
+    min_distances = np.min(distances, axis=1)
+    if np.mean(min_distances) < 0.01:
+        combined_centers = np.vstack([cluster_centers, gmm_means])
+        combined_costs = np.hstack([action_costs, refined_costs])
+        unique_centers, inverse = np.unique(combined_centers, axis=0, return_inverse=True)
+        unique_costs = np.array([np.min(combined_costs[inverse == i]) if np.any(inverse == i) else 0 for i in range(len(unique_centers))])
+        
+        if len(unique_centers) > n_clusters:
+            final_kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10).fit(unique_centers)
+            final_centers_red = final_kmeans.cluster_centers_
+            final_costs_red = np.zeros(n_clusters)
+            for i in range(n_clusters):
+                indices_red = np.where(final_kmeans.labels_ == i)[0]
+                if indices_red.size > 0:
+                    final_costs_red[i] = np.min(unique_costs[indices_red])
+                else:
+                    final_costs_red[i] = 0.0
+            final_centers = final_centers_red
+            final_costs = final_costs_red
+    
+    agent_setting = np.hstack([final_centers, final_costs.reshape(-1, 1)])
+    
+    row_sums = np.sum(agent_setting[:, :-1], axis=1)
+    agent_setting[:, :-1] = agent_setting[:, :-1] / row_sums[:, np.newaxis]
+    
+    return agent_setting
+```

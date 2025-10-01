@@ -1,0 +1,216 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Improved agent_solver that infers a consistent agent setting (actions = outcome distributions + costs)
+    explaining all historical principal-agent interactions (accept/reject logs).
+
+    Parameters:
+    -----------
+    v : np.ndarray
+        Principal's reward vector (length 5)
+    content : pd.DataFrame
+        Historical logs with columns:
+          - 'Contract' (list[float], length 5)
+          - 'Principal Utility' (float)
+          - 'Agent Action' (int): 1 = accept, -1 = reject
+
+    Returns:
+    --------
+    agent_setting : np.ndarray
+        n x 6 matrix (n actions),
+        first 5 columns: outcome distributions (sum to 1),
+        last column: agent action cost (>=0)
+    """
+
+    L = len(content)
+    m = len(v)
+    contracts = np.array(content['Contract'].tolist())  # shape (L, 5)
+    principal_utils = content['Principal Utility'].to_numpy()  # shape (L,)
+    agent_actions = content['Agent Action'].to_numpy()  # shape (L,)
+
+    # Step 1: Extract accepted and rejected contracts
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    # If no acceptance logs, fallback to single uniform action with zero cost
+    if accepted_idx.size == 0:
+        p_uniform = np.ones((1, m)) / m
+        c_uniform = np.zeros(1)
+        return np.hstack([p_uniform, c_uniform[:, None]])
+
+    # Step 2: Infer possible outcome distributions p by "inverting" accepted contracts
+
+    # For each accepted contract w and principal utility u, the agent utility is:
+    # U = p @ w - c >= 0 (IR)
+    # principal util = v @ p - w @ p = U + (v - w) @ p - c == given principal util,
+    # but c unknown. Instead, use linear programming to find feasible p
+
+    # Solve LP:
+    # variables: p_j (j=1,..,m)
+    # constraints:
+    #   sum p_j = 1
+    #   p_j >=0
+    #   principal_utility_i = (v - w) @ p >= 0 if accepted
+    # Here to find p that maximizes principal utility (v - w)@p
+    # given contract w, and accept, with IR p @ w - c >= 0 => c <= p@w
+
+    # Actually since c unknown, we want to find a p feasible 
+    # that is consistent with contract acceptance and observed principal utility.
+
+    # Define LP for each accepted contract:
+    # max (v - w_i) @ p
+    # s.t sum p_j = 1, p_j >=0
+    # and p @ w_i >= c >=0 with c unknown, we just ignore c here.
+
+    # Our goal: find diverse ps that explain acceptances.
+
+    # To get candidate ps, we solve for p maximizing principal util:
+    candidate_ps = []
+    for idx_i in accepted_idx:
+        w_i = contracts[idx_i]
+        c_i = principal_utils[idx_i]
+        # Solve LP:
+        # maximize (v - w_i) @ p
+        # s.t sum p_j =1, p_j>=0
+        # But principal util = (v - w_i) @ p, should be >= 0 for acceptance
+
+        c_vec = -(v - w_i)  # linprog minimize, so negate objective
+        A_eq = [np.ones(m)]
+        b_eq = [1.0]
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c_vec, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p_hat = res.x
+            # Check if this p_hat explains principal util within tolerance
+            util_calc = (v - w_i) @ p_hat
+            if util_calc >= -1e-6:  # numerical tolerance
+                candidate_ps.append(p_hat)
+
+    if len(candidate_ps) == 0:
+        # Fallback: Just uniform p
+        candidate_ps = [np.ones(m) / m]
+
+    candidate_ps = np.array(candidate_ps)
+
+    # Step 3: Cluster these candidate_ps via Agglomerative clustering to get adaptive #actions
+    # Use distance = L1 distance between distributions
+    cluster_n = min(10, len(candidate_ps))  # up to 10 clusters or less
+    if cluster_n == 1:
+        ps_centroids = candidate_ps
+    else:
+        clustering = AgglomerativeClustering(n_clusters=cluster_n, affinity='manhattan', linkage='average')
+        clustering.fit(candidate_ps)
+        ps_centroids = np.zeros((cluster_n, m))
+        for c in range(cluster_n):
+            members = candidate_ps[clustering.labels_ == c]
+            ps_centroids[c] = members.mean(axis=0)
+            # Normalize to sum 1
+            ps_centroids[c] = np.clip(ps_centroids[c], 0, None)
+            s = ps_centroids[c].sum()
+            if s > 0:
+                ps_centroids[c] /= s
+            else:
+                ps_centroids[c] = np.ones(m) / m
+
+    n = ps_centroids.shape[0]
+
+    # Step 4: Assign each accepted contract to closest action by principal utility explanation
+    assigns = np.full(L, -1, dtype=int)
+    for i in accepted_idx:
+        w = contracts[i]
+        util_by_action = (v - w) @ ps_centroids.T  # (n,)
+        # Assign to action maximizing principal util (should be >=0)
+        a_i = np.argmax(util_by_action)
+        assigns[i] = a_i
+
+    # Step 5: Estimate agent action cost c for each action:
+    # For accepted logs assigned to action a:
+    # IR: c_a <= p_a @ w (agent utility >=0)
+    # To be consistent, set c_a = min_i p_a @ w_i over i assigned to a
+
+    c = np.zeros(n)
+    for a in range(n):
+        idx_a = np.where(assigns == a)[0]
+        if len(idx_a) > 0:
+            ws_assigned = contracts[idx_a]  # shape (k_a, m)
+            payouts = ws_assigned @ ps_centroids[a]
+            c[a] = np.min(payouts)
+        else:
+            # No assignment, set cost zero (or small nonnegative)
+            c[a] = 0.0
+
+    c = np.clip(c, 0, None)  # non-negative costs
+
+    # Step 6: Validate rejection logs IR and IC consistency
+    # For each rejected contract w (agent rejected), the agent utility < 0 for all actions:
+    # p_a @ w - c_a < 0 for all a
+
+    # If violated, increase costs accordingly to maintain consistency:
+    if len(rejected_idx) > 0:
+        for a in range(n):
+            utilities_rej = contracts[rejected_idx] @ ps_centroids[a] - c[a]  # shape (num_rej,)
+            max_rej_utility = np.max(utilities_rej)
+            if max_rej_utility >= 0:
+                c[a] += max_rej_utility + 1e-6  # small margin to enforce strictly <0
+
+    # Step 7: Verify incentive compatibility (IC) for accepted contracts:
+    # For accepted contracts assigned to a, check that agent prefers a to any other action b
+    # i.e. p_a @ w - c[a] >= p_b @ w - c[b] for all b
+
+    # If violated, fix costs by LP minimizing sum increments while ensuring IC
+    # Formulate LP:
+    # variables: delta_c_a >=0
+    # minimize sum(delta_c)
+    # subject to:
+    #   for each accepted log i assigned a:
+    #       for all b != a:
+    #           (p_a - p_b) @ w_i >= c[a] + delta_c[a] - c[b] - delta_c[b]
+    # rearranged:
+    #   delta_c[a] - delta_c[b] <= (p_a - p_b) @ w_i - (c[a] - c[b])
+
+    # Prepare variables indexing delta_c of length n
+
+    from scipy.optimize import linprog
+
+    if n > 1 and len(accepted_idx) > 0:
+        delta_c_bounds = [(0, None) for _ in range(n)]
+        constraints_lhs = []
+        constraints_rhs = []
+
+        # Build constraints from IC
+        for i in accepted_idx:
+            a = assigns[i]
+            w_i = contracts[i]
+            for b in range(n):
+                if b == a:
+                    continue
+                lhs = np.zeros(n)
+                lhs[a] = 1
+                lhs[b] = -1
+                diff_p = ps_centroids[a] - ps_centroids[b]
+                rhs = diff_p @ w_i - (c[a] - c[b])
+                constraints_lhs.append(lhs)
+                constraints_rhs.append(rhs)
+
+        if constraints_lhs:
+            A_ub = -np.array(constraints_lhs)  # linprog does inequalities A_ub x <= b_ub
+            b_ub = -np.array(constraints_rhs)
+            # objective: minimize sum of delta_c (cost increments)
+            c_obj = np.ones(n)
+            res_lp = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=delta_c_bounds, method='highs')
+            if res_lp.success:
+                delta_c = res_lp.x
+                c += delta_c  # update costs after fixing IC
+                c = np.clip(c, 0, None)
+
+    # Step 8: Output agent setting matrix n x (m + 1)
+    agent_setting = np.hstack([ps_centroids, c[:, None]])
+
+    return agent_setting
+```

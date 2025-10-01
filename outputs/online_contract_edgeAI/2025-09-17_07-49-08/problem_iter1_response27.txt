@@ -1,0 +1,64 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances_argmin
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_candidates = 5
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def solve_lp(w: np.ndarray, u: float) -> np.ndarray | None:
+        A_eq = [np.ones(m_outcomes), v - w]
+        b_eq = [1.0, u]
+        bounds = [(0, 1)] * m_outcomes
+        res = linprog(np.zeros_like(v), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    candidate_us = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w_i = log['Contract']
+            u_i = log['Principal Utility']
+            p_i = solve_lp(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+                candidate_us.append(u_i)
+
+    if not candidate_ps:
+        return np.array([[np.ones(m_outcomes) / m_outcomes, 0.0]])
+
+    all_p = np.array(candidate_ps)
+
+    kmeans = KMeans(n_clusters=min(n_candidates, len(all_p)), random_state=0, n_init=10).fit(all_p)
+    p0 = kmeans.cluster_centers_
+
+    costs = []
+    for i in range(len(p0)):
+        costs.append(0.0)
+        
+    agent_setting = np.hstack([p0, np.array(costs)[:, np.newaxis]])
+
+    for idx, log in enumerate(content):
+        wage = np.array(log['Contract'])
+        action = log['Agent Action']
+
+        agent_utilities = agent_setting[:, :m_outcomes] @ wage
+
+        if action == 1:
+            best_action_idx = np.argmax(agent_utilities - agent_setting[:, m_outcomes])
+            
+            if agent_utilities[best_action_idx] < agent_setting[best_action_idx, m_outcomes] - 1e-5:
+                return np.array([[np.ones(m_outcomes) / m_outcomes, 0.0]])
+        elif action == -1:
+             best_action_idx = np.argmax(agent_utilities - agent_setting[:, m_outcomes])
+
+             if agent_utilities[best_action_idx] > agent_setting[best_action_idx, m_outcomes] + 1e-5:
+                return np.array([[np.ones(m_outcomes) / m_outcomes, 0.0]])
+                
+    return agent_setting
+```

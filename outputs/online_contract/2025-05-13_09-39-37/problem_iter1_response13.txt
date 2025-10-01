@@ -1,0 +1,129 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting (actions with outcome distributions and costs)
+    consistent with observed contract logs in an online contract design problem.
+
+    Args:
+        v: (5,) numpy array of principal's intrinsic reward per outcome.
+        content: pd.DataFrame with columns:
+            - 'Contract': list or np.array of length 5 (payments per outcome)
+            - 'Principal Utility': float (0 if rejection)
+            - 'Agent Action': int, 1 for accept, -1 for reject
+
+    Returns:
+        agent_setting: ndarray of shape (n_actions, 6)
+            Each row: [p_1, p_2, p_3, p_4, p_5, cost]
+            where p_i are probabilities summing to 1,
+            cost >= 0 is agent's cost for that action.
+    """
+
+    m_outcomes = v.shape[0]
+    logs = content.copy()
+    L = len(logs)
+
+    # Extract arrays for convenience
+    contracts = np.array(logs['Contract'].to_list())  # (L, 5)
+    putils = np.array(logs['Principal Utility'].to_list())  # (L,)
+    actions = np.array(logs['Agent Action'].to_list())  # (L,)
+
+    # Step 1: Separate accepted and rejected logs
+    idx_accept = np.where(actions == 1)[0]
+    idx_reject = np.where(actions == -1)[0]
+
+    # If no acceptance, cannot infer meaningful agent setting
+    if len(idx_accept) == 0:
+        raise ValueError("No accepted contracts to infer agent behavior.")
+
+    # Step 2: For each accepted contract, infer plausible agent outcome distribution p
+    # and agent utility u = p @ wage - cost >= 0.
+    # We approximate p by solving an LP to find a distribution p s.t:
+    #   p sums to 1, p >= 0
+    #   p @ contract ≈ principal utility + agent cost (unknown)
+    #
+    # Since cost unknown, we initially guess p maximizing likelihood of observed data.
+    # Instead, here: for each accepted contract, set p = normalize contract weights (softmax)
+    # as proxy, then cluster.
+
+    # We try a more principled approach: for each accepted contract, solve LP:
+    # minimize ||p - contract/scale|| s.t. p valid distribution
+    # This encourages p aligned with payment structure.
+
+    def infer_p_from_contract(w):
+        # Normalize payment vector to get rough proxy distribution
+        w_min = np.min(w)
+        w_shift = w - w_min  # shift to nonnegative
+        if np.sum(w_shift) < 1e-8:
+            # If all payments equal, uniform distribution
+            return np.ones(m_outcomes) / m_outcomes
+        return w_shift / np.sum(w_shift)
+
+    p_candidates = np.array([infer_p_from_contract(contracts[i]) for i in idx_accept])
+
+    # Step 3: Cluster the p_candidates to find a small number n_actions of distinct agent actions
+    # Use AgglomerativeClustering with distance threshold to adaptively select number of clusters
+    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=0.15, linkage='average')
+    labels = clustering.fit_predict(p_candidates)
+
+    n_actions = labels.max() + 1
+
+    # Compute cluster centers as mean p per cluster, normalize to sum to 1
+    p_actions = np.zeros((n_actions, m_outcomes))
+    for a in range(n_actions):
+        members = p_candidates[labels == a]
+        center = np.mean(members, axis=0)
+        center[center < 0] = 0
+        center_sum = np.sum(center)
+        if center_sum < 1e-8:
+            center = np.ones(m_outcomes) / m_outcomes
+        else:
+            center = center / center_sum
+        p_actions[a] = center
+
+    # Step 4: Assign each acceptance log to the most plausible action by maximizing expected payment p @ w
+    assign_accept = np.zeros(len(idx_accept), dtype=int)
+    for i, idx_i in enumerate(idx_accept):
+        w = contracts[idx_i]
+        vals = p_actions @ w  # expected payment for each action at contract w
+        assign_accept[i] = np.argmax(vals)
+
+    # Step 5: Compute agent costs c for each action based on IR constraints:
+    # For each action a, over assigned accepted logs, cost <= p_actions[a] @ w - agent utility (≥0)
+    # since agent utility ≥ 0 for acceptance, cost ≤ min_{assigned contracts} p @ w
+    c_candidates = np.zeros(n_actions)
+    for a in range(n_actions):
+        assigned_indices = idx_accept[assign_accept == a]
+        if len(assigned_indices) == 0:
+            c_candidates[a] = 0.0
+            continue
+        # The agent's IR cost for action a is at most minimum expected payment among assigned contracts
+        expected_payments = np.array([p_actions[a] @ contracts[i] for i in assigned_indices])
+        c_candidates[a] = max(0.0, expected_payments.min())
+
+    # Step 6: Enforce rejection constraints:
+    # For each rejected contract w_r, agent utility < 0 for all actions:
+    # p_actions[a] @ w_r - c[a] < 0  =>  c[a] > p_actions[a] @ w_r
+    # Thus cost must be strictly greater than max expected payment over rejected contracts.
+    if len(idx_reject) > 0:
+        worst_rejected = np.zeros(n_actions)
+        for a in range(n_actions):
+            rejected_payments = np.array([p_actions[a] @ contracts[i] for i in idx_reject])
+            worst_rejected[a] = np.max(rejected_payments)
+        # Update costs to satisfy rejection IR constraints:
+        c_candidates = np.maximum(c_candidates, worst_rejected + 1e-6)  # add epsilon to strictly enforce rejection
+
+    # Step 7: Final check feasibility:
+    # Ensure costs nonnegative
+    c_candidates = np.maximum(c_candidates, 0.0)
+
+    # Step 8: Return agent_setting matrix (n_actions x 6)
+    agent_setting = np.hstack([p_actions, c_candidates[:, None]])
+
+    return agent_setting
+```

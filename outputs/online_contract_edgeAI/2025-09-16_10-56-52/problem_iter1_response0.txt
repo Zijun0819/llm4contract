@@ -1,0 +1,36 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    n_candidates = max(6, min(20, len(accepted_logs) // 5))
+    candidate_ps = []
+    for log in accepted_logs:
+        w = np.array(log['Contract']) if isinstance(log['Contract'], list) else log['Contract']
+        p_vec = np.exp(w) / np.sum(np.exp(w))
+        candidate_ps.append(p_vec)
+    if len(candidate_ps) == 0:
+        return np.array([]).reshape(0, 13)
+    all_p = np.array(candidate_ps)
+    if n_candidates > len(all_p):
+        n_candidates = len(all_p)
+    kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=10).fit(all_p)
+    p_center = kmeans.cluster_centers_
+    cost_min = np.full(n_candidates, np.inf)
+    for i, log in enumerate(content):
+        w = np.array(log['Contract']) if isinstance(log['Contract'], list) else log['Contract']
+        if log['Agent Action'] == 1:
+            cluster_idx = kmeans.labels_[i] if i < len(accepted_logs) else np.argmax(p_center @ w)
+            cost_min[cluster_idx] = min(cost_min[cluster_idx], p_center[cluster_idx] @ w)
+        else:
+            utilities = p_center @ w
+            for idx in np.where(utilities > cost_min)[0]:
+                cost_min[idx] = min(cost_min[idx], utilities[idx])
+    for j in range(n_candidates):
+        if cost_min[j] == np.inf:
+            cost_min[j] = 0.0
+    agent_setting = np.hstack([p_center, cost_min.reshape(-1, 1)])
+    return agent_setting
+```

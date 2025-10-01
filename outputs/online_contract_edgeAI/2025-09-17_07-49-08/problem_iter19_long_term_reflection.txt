@@ -1,0 +1,2 @@
+Refine `mini_lp_p` with principal utility constraints. Maximize agent utility for rejected contracts. Increase `n_candidates` and use `k-means++` for initialization. Ensure non-negative costs and IR satisfaction.
+

@@ -1,0 +1,95 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans, DBSCAN
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import pairwise_distances
+from scipy.spatial.distance import cdist
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = v.shape[0]
+    L = len(content)
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    num_accepted = len(accepted_logs)
+    n_candidates = min(max(2, int(np.sqrt(num_accepted))), 15)
+    
+    def infer_from_accepted(w: np.ndarray, u: float) -> np.ndarray | None:
+        m = len(w)
+        A_eq = [np.ones(m), v - w]
+        b_eq = [1.0, u]
+        bounds = [(0, 1)] * m
+        res = linprog(w, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            return np.maximum(res.x, 0)
+        else:
+            return None
+    
+    candidate_ps = []
+    utilities = []
+    for log in accepted_logs:
+        w_i = log['Contract']
+        u_i = log['Principal Utility']
+        p_i = infer_from_accepted(w_i, u_i)
+        if p_i is not None:
+            candidate_ps.append(p_i)
+            utilities.append(u_i)
+    if not candidate_ps:
+        return np.array([[np.ones(m_outcomes)/m_outcomes, 0.0]])
+    
+    X = np.array(candidate_ps)
+    if num_accepted == 1:
+        p_final = X
+        n_candidates = 1
+    else:
+        try:
+            gm = GaussianMixture(n_components=n_candidates, random_state=0, n_init=5).fit(X)
+            labels = gm.predict(X)
+            p_final = gm.means_
+        except:
+            kmeans = KMeans(n_clusters=n_candidates, random_state=0, n_init=10).fit(X)
+            p_final = kmeans.cluster_centers_
+    
+    if rejected_logs:
+        w_rej = np.array([log['Contract'] for log in rejected_logs])
+    else:
+        w_rej = np.array([]).reshape(m_outcomes, 0)
+    
+    c_init = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        indices = [i for i, log in enumerate(accepted_logs) if labels[i] == a] if n_candidates > 1 else [0]
+        if indices:
+            w_a = np.array([accepted_logs[i]['Contract'] for i in indices]).T
+            c_a = (p_final[a] @ w_a).min()
+        else:
+            c_a = 0.0
+        
+        if w_rej.size > 0:
+            rej_utils = p_final[a] @ w_rej
+            c_rej = rej_utils.max()
+        else:
+            c_rej = -np.inf
+            
+        c_init[a] = max(c_a, c_rej)
+    
+    if n_candidates > 1:
+        duplicate_mask = np.array([True])
+        for i in range(1, n_candidates):
+            if not np.any(np.all(np.isclose(p_final[:i], p_final[i], atol=1e-6), axis=1)):
+                duplicate_mask = np.append(duplicate_mask, True)
+            else:
+                duplicate_mask = np.append(duplicate_mask, False)
+        p_final = p_final[duplicate_mask]
+        c_init = c_init[duplicate_mask]
+    
+    for i in range(len(p_final)):
+        p_final[i] = np.maximum(p_final[i], 0)
+        if np.sum(p_final[i]) > 0:
+            p_final[i] /= np.sum(p_final[i])
+        else:
+            p_final[i] = np.ones(m_outcomes)/m_outcomes
+    
+    agent_setting = np.hstack([p_final, c_init.reshape(-1, 1)])
+    return agent_setting
+```

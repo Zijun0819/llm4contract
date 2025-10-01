@@ -1,0 +1,221 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.mixture import GaussianMixture
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting that explains all historical logs (accept/reject)
+    by adaptive mixture model and robust cost assignment.
+
+    Args:
+        v (np.ndarray): Principal's reward vector for 5 outcomes, shape (5,)
+        content (list of dict): Each dict has keys:
+            'Contract': list of 5 payments,
+            'Principal Utility': float,
+            'Agent Action': 1 (accept) or -1 (reject)
+
+    Returns:
+        np.ndarray: shape (n_actions, 6), columns: 5 outcome probabilities + cost.
+    """
+    # Data info
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    # Extract contracts, utilities, agent actions
+    contracts = np.array([c['Contract'] for c in content])  # shape (L,5)
+    utilities = np.array([c['Principal Utility'] for c in content]) # shape (L,)
+    actions = np.array([c['Agent Action'] for c in content]) # shape (L,)
+
+    # --- Step 1: Select subset for accepted contracts for outcome distribution inference
+    accepted_idx = np.where(actions == 1)[0]
+    rejected_idx = np.where(actions == -1)[0]
+    if len(accepted_idx) == 0:
+        # No accepted logs, return trivial agent: always rejects, uniform outcomes, zero cost
+        p_uniform = np.ones(m_outcomes) / m_outcomes
+        return np.vstack([np.append(p_uniform, 0.)])
+
+    contracts_acc = contracts[accepted_idx]  # (n_acc,5)
+    utilities_acc = utilities[accepted_idx]  # (n_acc,)
+
+    # --- Step 2: For accepted contracts, infer for each accepted contract one p-vector that reproduces observed utility & IR
+    # Each accepted contract: Expectation w.r.t unknown p minus cost >=0 (IR), and principal utility = v @ p - wage @ p
+    # To solve, we guess cost per action later; here find p vectors that maximize likelihood
+    
+    # We seek a mixture of n_actions means p_i, clustered from inferred p_i 
+    # To get initial candidate p_i for each accepted contract, solve LP:
+    # find p_i (distribution) s.t:
+    #   sum p_i = 1
+    #   p_i @ (wage) = wage_i_expected (close to realized? but agent utility unknown)
+    # No direct agent utility given, use IR u >=0
+    # Actually agent utility u_i unknown = p_i @ wage_i - cost, cost unknown,
+    # But principal utility known: U_p = v @ p_i - wage_i @ p_i
+    # So wage_i @ p_i = v @ p_i - U_p_i
+
+    # We will infer p_i solving LP:
+    # Variables: p_i >=0, sum p_i=1
+    # Objective: minimize discrepancy |p_i @ wage - (v @ p_i - U_p_i)| (to fit wage)
+    # This is non-linear because p appears on both sides of equation; approximate by convex relaxation:
+    # Instead, minimize ||p_i @ wage - (v @ p_i - U_p_i)|| by searching p_i
+
+    # We try to find p_i that maximizes expected principal utility close to observed U_p_i
+
+    p_candidates = []
+    feasibility_mask = []
+
+    for i in range(len(accepted_idx)):
+        wage_i = contracts_acc[i]
+        U_p_i = utilities_acc[i]
+
+        # Solve: find p_i >=0, sum p_i=1, minimize abs((v - wage_i) @ p_i - U_p_i)
+        # Start from linprog with objective to minimize deviation:
+
+        # We transform absolute value constraint |a - b| into linear program by two LPs:
+
+        # LP1: min (v-wage_i).T @ p_i - U_p_i  s.t. sum p_i=1, p_i>=0
+        c = (v - wage_i)
+        A_eq = np.ones((1, m_outcomes))
+        b_eq = [1]
+        bounds = [(0, 1) for _ in range(m_outcomes)]
+        res_neg = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        # LP2: min -(v - wage_i).T @ p_i + U_p_i, equivalently max (v-wage_i).T p_i
+        res_pos = linprog(-c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+
+        candidates = []
+        distances = []
+
+        for res in [res_neg, res_pos]:
+            if res.success:
+                deviation = abs((v - wage_i) @ res.x - U_p_i)
+                candidates.append(res.x)
+                distances.append(deviation)
+
+        if candidates:
+            # Choose candidate with minimal deviation
+            idx_min = np.argmin(distances)
+            p_candidates.append(candidates[idx_min])
+            feasibility_mask.append(True)
+        else:
+            # fallback uniform
+            p_candidates.append(np.ones(m_outcomes)/m_outcomes)
+            feasibility_mask.append(False)
+
+    p_candidates = np.array(p_candidates)
+    feasibility_mask = np.array(feasibility_mask)
+
+    # Filter candidate p for well-fitted
+    p_candidates_filtered = p_candidates[feasibility_mask]
+
+    # --- Step 3: Fit Gaussian Mixture Model to cluster outcome distributions adaptively
+    # Choose n_actions from 3 up to 8 to avoid overfit
+    best_gmm = None
+    best_bic = float('inf')
+    for n_candidate in range(3, 9):
+        try:
+            gmm = GaussianMixture(n_components=n_candidate,
+                                  covariance_type='diag',
+                                  random_state=42,
+                                  max_iter=500,
+                                  n_init=5)
+            gmm.fit(p_candidates_filtered)
+            bic = gmm.bic(p_candidates_filtered)
+            if bic < best_bic:
+                best_bic = bic
+                best_gmm = gmm
+        except Exception:
+            continue
+
+    if best_gmm is None:
+        # fallback no clustering: single cluster as average p
+        p_means = np.mean(p_candidates_filtered, axis=0, keepdims=True)
+    else:
+        p_means = best_gmm.means_
+        # Normalize to simplex (ensure positive and sums to 1)
+        p_means = np.clip(p_means, 1e-8, None)
+        p_means = p_means / p_means.sum(axis=1, keepdims=True)
+
+    n_actions = p_means.shape[0]
+
+    # --- Step 4: For each action i, infer minimal cost c_i to satisfy IR for assigned accepted contracts:
+    # IR: p_i @ wage - c_i >= 0 for all accepted contracts assigned to action i
+
+    # Assign each accepted contract to nearest cluster by KL or L2 distance:
+    def kl_divergence(p, q):
+        p = np.clip(p, 1e-12, 1)
+        q = np.clip(q, 1e-12, 1)
+        return np.sum(p * np.log(p / q))
+
+    assign_acc = []
+    for p_hat in p_candidates:
+        dists = np.array([kl_divergence(p_hat, pm) for pm in p_means])
+        assign_acc.append(np.argmin(dists))
+    assign_acc = np.array(assign_acc)
+
+    c_ir = np.zeros(n_actions)
+    for i in range(n_actions):
+        idx_i = np.where(assign_acc == i)[0]
+        if len(idx_i) == 0:
+            c_ir[i] = 0
+            continue
+        # For each assigned contract j, IR requires: p_i @ wage_j - c_i >=0
+        # So c_i <= min_j p_i @ wage_j
+        wages_j = contracts_acc[idx_i]  # shape (num_j, 5)
+        val = np.min(np.dot(wages_j, p_means[i]))
+        c_ir[i] = max(0, val)
+
+    # --- Step 5: Rejection consistency:
+    # For each rejected contract, ensure agent utility < 0 under all actions:
+    # agent utility = p_i @ w_j - c_i < 0
+    # => p_i @ w_j < c_i
+    # Check max over p_i @ w_j for each action i and rejected contract j
+    if len(rejected_idx) > 0:
+        wages_rej = contracts[rejected_idx]  # (n_rej,5)
+        rej_violation = False
+        for i in range(n_actions):
+            # Vectorized for ith p_i on all wages_rej: shape(n_rej,)
+            expected_utilities = wages_rej.dot(p_means[i]) - c_ir[i]
+            if np.any(expected_utilities >= 0):
+                rej_violation = True
+                # Penalize cost pushing cost up to be > max expected utilities on rejections
+                c_ir[i] = max(c_ir[i], np.max(wages_rej.dot(p_means[i])) + 1e-6)
+        # repeat check after adjustment
+        # Usually one iteration suffices
+
+    # --- Step 6: Check acceptance consistency again for full data:
+    # For accepted contracts: ensure p_assigned_i @ wage - cost_i >= 0 (IR)
+    # For rejected: for all i: p_i @ wage - cost_i <0
+    # If violated, adjust costs minimally (LP or heuristic)
+    for _ in range(3):  # at most 3 refinement rounds
+        # Accepted check
+        violation = False
+        for i in range(n_actions):
+            idx_i = np.where(assign_acc == i)[0]
+            if len(idx_i) == 0:
+                continue
+            wages_j = contracts_acc[idx_i]  # (num_j,5)
+            gap = np.min(wages_j.dot(p_means[i])) - c_ir[i]
+            if gap < 0:
+                c_ir[i] = max(c_ir[i], np.min(wages_j.dot(p_means[i])))
+
+        # Rejected check
+        rej_violation = False
+        for i in range(n_actions):
+            wages_nonacc = []
+            for idx_j in rejected_idx:
+                w_j = contracts[idx_j]
+                if w_j.dot(p_means[i]) - c_ir[i] >= 0:
+                    rej_violation = True
+                    wages_nonacc.append(w_j.dot(p_means[i]))
+            if rej_violation and wages_nonacc:
+                c_ir[i] = max(c_ir[i], max(wages_nonacc) + 1e-6)
+        if not rej_violation:
+            break
+
+    # --- Step 7: Compose final output, rows = action i:
+    # Columns: 5 outcome probs, then cost (non-negative)
+    c_ir = np.clip(c_ir, 0, None)
+    agent_setting = np.hstack((p_means, c_ir.reshape(-1,1)))
+
+    return agent_setting
+```

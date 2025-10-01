@@ -1,0 +1,1 @@
+Use PCA for dimensionality reduction, apply adaptive clustering with `n_candidates=10` and `n_init=20`, and enforce tight IR/IC constraints using min wages. Normalize probabilities post-clustering, ensure non-negative costs with slack, and avoid post-hoc adjustments. Leverage LP duality for feasibility and utility maximization for assignment.

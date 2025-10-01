@@ -1,0 +1,21 @@
+1. **Increase max_k** for more candidate actions.  
+2. **Use stricter slack** for tighter constraints.  
+3. **Improve PCA dimensionality** for better clustering.  
+4. **Refine cost regularization** to ensure positivity.
+1. Use tighter cost bounds from IR and IC constraints.  
+2. Improve clustering for better action representation.  
+3. Regularize costs to ensure positivity and feasibility.
+Use PCA for dimensionality reduction before clustering to improve agent setting inference.
+Use PCA for dimensionality reduction before clustering to improve agent setting inference accuracy.
+1. **Improve clustering stability** by increasing `n_init` in KMeans.
+2. **Use utility maximization** for better action assignments.
+3. **Tighten IR/IC constraints** with min/max wage bounds.
+4. **Regularize costs** using average wages for positivity.
+Use PCA for dimensionality reduction before clustering to improve agent setting inference.
+1. **Increase max_k range** to allow more clusters (15 vs. 10) for better fit.  
+2. **Start KMeans range at 2** to avoid degenerate clustering.  
+3. **Use utility-based assignments** for all contracts, not just accepted ones.  
+4. **Align cost computation** with actual agent incentives and constraints more precisely.
+Use PCA for dimensionality reduction before clustering to improve agent setting inference.
+Use PCA for dimensionality reduction before clustering to improve agent setting inference.
+Use PCA for dimensionality reduction before clustering to improve action inference and cost estimation accuracy.

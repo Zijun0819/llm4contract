@@ -1,0 +1,1 @@
+Optimize GaussianMixture, balance `n_candidates`, and refine parameters for better fit and performance.

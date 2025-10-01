@@ -1,0 +1,10 @@
+Use rejection LP with utility <0 constraint; cluster with Euclidean metric; iteratively adjust costs for IR and IC violations.
+Incorporate rejected logs in clustering; use robust metrics (cosine); enforce strict IR/IC with adaptive cost adjustments.
+Incorporate rejected logs in clustering; use adaptive clustering (DBSCAN); iteratively adjust costs ensuring IR and IC constraints.
+Incorporate rejected logs in clustering, use cosine distance, adaptive eps, and iterative cost refinement for robust agent inference.
+Use adaptive clustering with silhouette scores; enforce IR/IC via iterative cost adjustments; prefer KMeans over DBSCAN for stability.
+Cluster all logs jointly; enforce strict IR/IC via iterative cost updates; prefer hierarchical clustering over DBSCAN; validate and adjust costs.
+Cluster p's before cost inference; set costs max(accepted utilities, rejected utilities + ε); validate and adjust iteratively.
+Cluster only accepted logs' p's; separate rejects via cost constraints; refine costs with targeted IR/IC violations.
+Incorporate rejected logs into clustering; adapt costs iteratively balancing IR and IC constraints for better fit.
+Incorporate rejected logs in clustering, tune DBSCAN eps via silhouette, iteratively adjust costs for IR and IC satisfaction.

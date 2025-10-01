@@ -1,0 +1,61 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_actions = 5
+    m_outcomes = len(v)
+    contracts = [log['Contract'] for log in content]
+    actions = [log['Agent Action'] for log in content]
+    contracts = np.array(contracts)
+    
+    def solve_lp(contract):
+        c = np.zeros(m_outcomes)
+        A_eq = [np.ones(m_outcomes)]
+        b_eq = [1]
+        bounds = [(0, 1) for _ in range(m_outcomes)]
+        result = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if result.success:
+            return result.x
+        else:
+            return None
+
+    possible_distributions = []
+    for i in range(len(content)):
+        if actions[i] == 1:
+            distribution = solve_lp(contracts[i])
+            if distribution is not None:
+                possible_distributions.append(distribution)
+    
+    if not possible_distributions:
+        dummy_distribution = np.ones(m_outcomes) / m_outcomes
+        possible_distributions = [dummy_distribution]
+        n_actions = 1
+    else:
+        possible_distributions = np.array(possible_distributions)
+        kmeans = KMeans(n_clusters=min(n_actions, len(possible_distributions)), random_state=0, n_init=10)
+        kmeans.fit(possible_distributions)
+        n_actions = kmeans.n_clusters
+        possible_distributions = kmeans.cluster_centers_
+
+    costs = np.zeros(n_actions)
+    for j in range(n_actions):
+        action_utility = float('inf')
+        for i in range(len(content)):
+            if actions[i] == 1:
+                utility = possible_distributions[j] @ contracts[i]
+                action_utility = min(action_utility, utility)
+        costs[j] = max(0, action_utility)
+
+    for i in range(len(content)):
+        if actions[i] == -1:
+            utilities = [possible_distributions[j] @ contracts[i] - costs[j] for j in range(n_actions)]
+            best_action = np.argmax(utilities)
+            costs[best_action] = max(costs[best_action], possible_distributions[best_action] @ contracts[i])
+    costs = np.maximum(costs, 0)
+
+    agent_settings = np.hstack([possible_distributions, costs[:, np.newaxis]])
+    return agent_settings
+```

@@ -1,0 +1,190 @@
+```python
+import numpy as np
+import pandas as pd
+from sklearn.cluster import AgglomerativeClustering
+from scipy.optimize import linprog
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions x [probabilities over 5 outcomes + cost])
+    that explains all historical interactions under IR and IC constraints.
+
+    Args:
+        v: np.ndarray of shape (5,), principal's reward vector for 5 outcomes.
+        content: list of dicts, each with keys 'Contract' (list of 5 float payments),
+                 'Principal Utility' (float), and 'Agent Action' (1 or -1).
+
+    Returns:
+        np.ndarray of shape (n_actions, 6), rows are [p1,...,p5,cost]
+    """
+    m = v.shape[0]  # expected 5 outcomes
+    logs = pd.DataFrame(content)
+    contracts = np.stack(logs['Contract'].values)  # (L,5)
+    actions = logs['Agent Action'].values          # (L,)
+    principal_utils = logs['Principal Utility'].values  # (L,)
+
+    accepted_idx = np.where(actions == 1)[0]
+    rejected_idx = np.where(actions == -1)[0]
+
+    # If no accepted contracts, fallback uniform distribution with zero cost
+    if len(accepted_idx) == 0:
+        p_uniform = np.ones(m) / m
+        return np.array([np.append(p_uniform, 0.0)])
+
+    accepted_contracts = contracts[accepted_idx]
+
+    # Use sqrt of principal rewards as weights for weighted Euclidean distance
+    sqrt_v = np.sqrt(np.maximum(v, 0))
+
+    def weighted_dist(X, centers):
+        # X: (n_samples, m), centers: (k, m)
+        # returns (n_samples, k) weighted L2 distances
+        diff = X[:, None, :] - centers[None, :, :]  # (n_samples, k, m)
+        weighted_diff = diff * sqrt_v[None, None, :]
+        dist = np.linalg.norm(weighted_diff, axis=2)
+        return dist
+
+    max_actions = min(10, len(accepted_contracts))
+    threshold = 0.04  # max weighted avg L2 dist allowed per cluster
+
+    best_labels = None
+    best_n_clusters = None
+    centers = None
+
+    # Try clustering from 2 to max_actions clusters to find tight clusters
+    for n_clusters in range(2, max_actions + 1):
+        clustering = AgglomerativeClustering(n_clusters=n_clusters)
+        labels = clustering.fit_predict(accepted_contracts)
+        cluster_centers = np.zeros((n_clusters, m))
+        avg_dists = []
+        for i in range(n_clusters):
+            cluster_points = accepted_contracts[labels == i]
+            center = cluster_points.mean(axis=0)
+            cluster_centers[i] = center
+            dists = weighted_dist(cluster_points, center[None, :])
+            avg_dist = dists.mean()
+            avg_dists.append(avg_dist)
+        if max(avg_dists) < threshold:
+            best_labels = labels
+            best_n_clusters = n_clusters
+            centers = cluster_centers
+            break
+
+    # If no clustering meets threshold, fallback to max_actions clusters anyway
+    if centers is None:
+        clustering = AgglomerativeClustering(n_clusters=max_actions)
+        best_labels = clustering.fit_predict(accepted_contracts)
+        best_n_clusters = max_actions
+        centers = np.zeros((best_n_clusters, m))
+        for i in range(best_n_clusters):
+            cluster_points = accepted_contracts[best_labels == i]
+            centers[i] = cluster_points.mean(axis=0)
+
+    # Normalize centers to valid probability distributions over outcomes
+    # Contracts are payments, so normalize positive part to sum to 1 (probabilities)
+    ps = []
+    for i in range(best_n_clusters):
+        p_i = centers[i].copy()
+        p_i = np.maximum(p_i, 0)
+        s = p_i.sum()
+        if s < 1e-12:
+            p_i = np.ones(m) / m
+        else:
+            p_i /= s
+        ps.append(p_i)
+    ps = np.array(ps)  # (n_actions, m)
+
+    # Assign accepted contracts to closest action by weighted Euclidean distance
+    dist_to_actions = weighted_dist(accepted_contracts, centers)
+    assigned_actions = dist_to_actions.argmin(axis=1)  # length = accepted contracts
+
+    n = best_n_clusters
+    L = len(content)
+
+    # Setup LP variables: costs c_a for each action a=0..n-1
+    # Constraints:
+    # IR: For each accepted contract i assigned to a_i:
+    #     p_{a_i} @ w_i - c_{a_i} >= 0  =>  c_{a_i} <= p_{a_i} @ w_i
+    #
+    # IC: For each accepted contract i assigned to a_i, for all a' != a_i:
+    #     p_{a_i} @ w_i - c_{a_i} >= p_{a'} @ w_i - c_{a'}
+    # => c_{a'} - c_{a_i} >= p_{a'} @ w_i - p_{a_i} @ w_i
+    #
+    # Rejection: For each rejected contract i, for all a:
+    #     p_a @ w_i - c_a < 0  =>  c_a > p_a @ w_i
+    # We add margin epsilon > 0 for strictness.
+
+    A_ub = []
+    b_ub = []
+
+    # IR constraints: c_{a_i} <= p_{a_i} @ w_i
+    for idx_pos, a_i in zip(accepted_idx, assigned_actions):
+        w_i = contracts[idx_pos]
+        p_a = ps[a_i]
+        row = np.zeros(n)
+        row[a_i] = 1.0
+        A_ub.append(row)
+        b_ub.append(p_a @ w_i)
+
+    # IC constraints: c_{a'} - c_{a_i} >= p_{a'}@w_i - p_{a_i}@w_i
+    # rewritten as: -c_{a'} + c_{a_i} <= -(p_{a'}@w_i - p_{a_i}@w_i)
+    # So add rows with coefficients: row[a_prime]=-1, row[a_i]=1, rhs=-(p_{a'}@w_i - p_{a_i}@w_i)
+    for idx_pos, a_i in zip(accepted_idx, assigned_actions):
+        w_i = contracts[idx_pos]
+        p_a_i = ps[a_i]
+        for a_prime in range(n):
+            if a_prime == a_i:
+                continue
+            p_a_prime = ps[a_prime]
+            row = np.zeros(n)
+            row[a_prime] = -1.0
+            row[a_i] = 1.0
+            rhs = -( (p_a_prime @ w_i) - (p_a_i @ w_i) )
+            A_ub.append(row)
+            b_ub.append(rhs)
+
+    # Rejection constraints: c_a > p_a @ w_i for all a and rejected contracts i
+    # Inequality: -c_a <= - (p_a @ w_i + eps)
+    eps = 1e-6
+    for idx_pos in rejected_idx:
+        w_i = contracts[idx_pos]
+        for a in range(n):
+            p_a = ps[a]
+            row = np.zeros(n)
+            row[a] = -1.0
+            A_ub.append(row)
+            b_ub.append(-(p_a @ w_i + eps))
+
+    A_ub = np.array(A_ub)
+    b_ub = np.array(b_ub)
+
+    # Objective: minimize sum of costs (small weight to avoid trivial large costs)
+    c_obj = np.ones(n) * 1e-6
+
+    bounds = [(0, None) for _ in range(n)]  # costs >= 0
+
+    res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+
+    if res.success:
+        costs = res.x
+    else:
+        # Fallback: use minimal IR costs clipped at zero
+        costs = np.zeros(n)
+        for a in range(n):
+            idxs = np.where(assigned_actions == a)[0]
+            if idxs.size > 0:
+                pay_ins = np.array([ps[a] @ accepted_contracts[i] for i in idxs])
+                costs[a] = max(pay_ins.min(), 0.0)
+            else:
+                costs[a] = 0.0
+
+    # Final safety: clip probabilities and costs
+    ps = np.clip(ps, 0, None)
+    ps_sum = ps.sum(axis=1, keepdims=True)
+    ps_sum[ps_sum < 1e-12] = 1.0  # avoid division by zero
+    ps /= ps_sum
+    costs = np.clip(costs, 0, None)
+
+    agent_setting = np.hstack([ps, costs[:, None]])
+    return agent_setting
+```

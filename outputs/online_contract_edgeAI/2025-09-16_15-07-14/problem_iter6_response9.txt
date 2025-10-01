@@ -1,0 +1,101 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import KDTree
+import warnings
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    warnings.filterwarnings('ignore', message='Solving linear programming with equality constraints')
+    
+    v = np.array(v)
+    m = len(v)
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    def estimate_p(w, u_principal):
+        try:
+            A_eq = np.vstack([np.ones(m), v - w])
+            b_eq = np.array([1.0, u_principal])
+            res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * m, method='highs')
+            if res.success:
+                p = res.x
+                p = np.maximum(p, 0)
+                p_sum = p.sum()
+                if p_sum > 0:
+                    return p / p_sum
+            return None
+        except:
+            return None
+    
+    ps_candidates = []
+    for log in accepted_logs:
+        contract = np.array(log['Contract'])
+        u_principal = log['Principal Utility']
+        p_est = estimate_p(contract, u_principal)
+        if p_est is not None:
+            ps_candidates.append(p_est)
+    
+    if not ps_candidates:
+        p_default = np.ones((1, m)) / m
+        c_default = np.zeros(1)
+        return np.hstack([p_default, c_default.reshape(-1, 1)])
+    
+    all_p = np.array(ps_candidates)
+    n_components = min(10, len(all_p))
+    if n_components < 1:
+        n_components = 1
+    gmm = GaussianMixture(n_components=n_components, random_state=42, n_init=10)
+    gmm.fit(all_p)
+    cluster_centers = gmm.means_
+    cluster_centers = np.maximum(cluster_centers, 0)
+    cluster_centers = cluster_centers / cluster_centers.sum(axis=1, keepdims=True)
+    n_clusters = cluster_centers.shape[0]
+    
+    tree = KDTree(cluster_centers)
+    action_costs = np.zeros(n_clusters)
+    for i in range(n_clusters):
+        utilities = []
+        for log in accepted_logs:
+            contract = np.array(log['Contract'])
+            utility = np.dot(cluster_centers[i], contract)
+            utilities.append(utility)
+        if utilities:
+            action_costs[i] = np.min(utilities)
+        else:
+            action_costs[i] = 0.0
+    
+    for log in rejected_logs:
+        contract = np.array(log['Contract'])
+        u_principal = log['Principal Utility']
+        p_est = estimate_p(contract, u_principal)
+        if p_est is not None:
+            _, idx = tree.query(p_est.reshape(1, -1), k=1)
+            cluster_idx = idx[0]
+            utility = np.dot(cluster_centers[cluster_idx], contract)
+            if utility >= action_costs[cluster_idx]:
+                action_costs[cluster_idx] = utility + 1e-8
+    
+    for i in range(n_clusters):
+        action_costs[i] = max(action_costs[i], 0)
+    
+    changed = True
+    while changed:
+        changed = False
+        for log in content:
+            contract = np.array(log['Contract'])
+            utilities = np.dot(cluster_centers, contract) - action_costs
+            max_util = np.max(utilities)
+            if log['Agent Action'] == 1:
+                if max_util < 0:
+                    best_action = np.argmax(np.dot(cluster_centers, contract))
+                    action_costs[best_action] = np.dot(cluster_centers[best_action], contract) - 1e-8
+                    changed = True
+            else:
+                if max_util >= 0:
+                    best_action = np.argmax(utilities)
+                    action_costs[best_action] = np.dot(cluster_centers[best_action], contract) + 1e-8
+                    changed = True
+    
+    return np.hstack([cluster_centers, action_costs.reshape(-1, 1)])
+```

@@ -1,0 +1,10 @@
+Use clustering to generalize actions and enforce IR/IC via min costs and max rejection utilities.
+Refine action clustering; optimize probabilities to fit both acceptance and rejection logs.
+Consider minimum cost via accepted contracts and rejection constraints for tighter IR bounds.
+Use probabilistic clustering and density estimation to refine action centers and ensure consistency with all logs.
+Use GMM over KMeans for probabilistic clustering, and refine cost constraints using both accepted and rejected contracts.
+Assign agent actions by clustering, then compute costs from accepted and rejected contracts directly.
+Use GMM for clustering; optimize costs from IR and IC constraints.
+Use BIC for optimal GMM component selection; assign actions via max utility matching; combine IR and rejection costs conservatively.
+Try clustering actions and smoothing distributions for better generalization.
+Use BIC for cluster count; smooth distributions; ensure costs respect both accept and reject constraints.

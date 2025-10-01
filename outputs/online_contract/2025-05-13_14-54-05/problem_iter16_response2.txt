@@ -1,0 +1,133 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions x [probabilities over 5 outcomes + cost])
+    that explains all historical interactions under IR and IC constraints.
+
+    Args:
+        v: np.ndarray of shape (5,), principal's reward vector for 5 outcomes.
+        content: list of dicts, each with keys 'Contract' (list of 5 float payments),
+                 'Principal Utility' (float), and 'Agent Action' (1 or -1).
+
+    Returns:
+        np.ndarray of shape (n_actions, 6), rows are [p1,...,p5,cost]
+    """
+    m = v.shape[0]
+    logs_df = pd.DataFrame(content)
+
+    accept_df = logs_df[logs_df['Agent Action'] == 1]
+    reject_df = logs_df[logs_df['Agent Action'] == -1]
+
+    if len(accept_df) == 0:
+        p_uniform = np.ones(m) / m
+        return np.array([np.append(p_uniform, 0.0)])
+
+    accept_contracts = np.vstack(accept_df['Contract'].to_numpy())
+    accept_putils = accept_df['Principal Utility'].to_numpy()
+    reject_contracts = (np.vstack(reject_df['Contract'].to_numpy())
+                        if len(reject_df) > 0 else np.empty((0, m)))
+
+    def solve_p_for_accept(w: np.ndarray, pu: float) -> np.ndarray:
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, pu])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(c=np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p = res.x
+            p = np.clip(p, 0, None)
+            s = p.sum()
+            if s > 0:
+                p /= s
+            else:
+                p = np.ones(m) / m
+            return p
+        else:
+            return np.ones(m) / m
+
+    candidate_ps = np.array([solve_p_for_accept(w, pu) for w, pu in zip(accept_contracts, accept_putils)])
+
+    max_clusters = min(10, len(candidate_ps))
+    if max_clusters == 1:
+        n_actions = 1
+        p_centers = candidate_ps.mean(axis=0, keepdims=True)
+        accept_assign = np.zeros(len(candidate_ps), dtype=int)
+    else:
+        inertias = []
+        km_models = []
+        for k in range(1, max_clusters + 1):
+            kmeans = KMeans(n_clusters=k, random_state=0, n_init=20).fit(candidate_ps)
+            inertias.append(kmeans.inertia_)
+            km_models.append(kmeans)
+        inertias = np.array(inertias)
+        deltas = -np.diff(inertias)
+        if len(deltas) >= 2:
+            ratios = deltas[1:] / (deltas[:-1] + 1e-12)
+            elbow_candidates = np.where(ratios < 0.5)[0] + 2
+            n_actions = elbow_candidates[0] if len(elbow_candidates) > 0 else max_clusters
+        elif len(deltas) == 1:
+            n_actions = 1 if deltas[0] < 1e-3 else 2
+        else:
+            n_actions = 1
+        kmeans = km_models[n_actions - 1]
+        p_centers = kmeans.cluster_centers_
+        accept_assign = kmeans.predict(candidate_ps)
+
+    unique_clusters, counts = np.unique(accept_assign, return_counts=True)
+    nonempty_clusters = unique_clusters[counts > 0]
+    if len(nonempty_clusters) < n_actions:
+        p_centers = p_centers[nonempty_clusters]
+        n_actions = len(nonempty_clusters)
+        mapping = {old: new for new, old in enumerate(nonempty_clusters)}
+        accept_assign = np.array([mapping[a] for a in accept_assign])
+
+    p_centers = np.clip(p_centers, 0, None)
+    row_sums = p_centers.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    p_centers /= row_sums
+
+    costs = np.zeros(n_actions)
+    for a in range(n_actions):
+        idxs = np.where(accept_assign == a)[0]
+        if len(idxs) == 0:
+            costs[a] = 0.0
+            continue
+        p_a = p_centers[a]
+        payoffs = accept_contracts[idxs] @ p_a
+        cost_upper_bound = np.min(payoffs) - 1e-6
+        costs[a] = max(0.0, cost_upper_bound)
+
+    if reject_contracts.shape[0] > 0:
+        rej_utils = reject_contracts @ p_centers.T
+        max_rej_util = np.max(rej_utils, axis=0)
+        margin = np.maximum(1e-6, 1e-4 * np.maximum(1.0, max_rej_util))
+        costs = np.maximum(costs, max_rej_util + margin)
+
+    costs = np.maximum(costs, 0.0)
+
+    strict_margin = 1e-6
+    for a in range(n_actions):
+        idxs = np.where(accept_assign == a)[0]
+        if len(idxs) == 0:
+            continue
+        p_a = p_centers[a]
+        payoffs = accept_contracts[idxs] @ p_a
+        min_agent_util = np.min(payoffs - costs[a])
+        if min_agent_util < strict_margin:
+            costs[a] = max(0.0, costs[a] + (strict_margin - min_agent_util))
+
+    if reject_contracts.shape[0] > 0:
+        rej_utils = reject_contracts @ p_centers.T
+        for a in range(n_actions):
+            max_util = np.max(rej_utils[:, a] - costs[a])
+            if max_util >= -strict_margin:
+                costs[a] = max(costs[a], np.max(rej_utils[:, a]) + strict_margin + 1e-6)
+
+    agent_setting = np.hstack([p_centers, costs.reshape(-1, 1)])
+
+    return agent_setting
+```

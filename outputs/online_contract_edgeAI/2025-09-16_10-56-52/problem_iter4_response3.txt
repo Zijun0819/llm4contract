@@ -1,0 +1,78 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import KernelDensity
+from scipy.special import logsumexp
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = len(v)
+    logs = pd.DataFrame(content)
+    accepted = logs[logs['Agent Action'] == 1]
+    rejected = logs[logs['Agent Action'] == -1]
+    
+    if len(accepted) == 0:
+        return np.array([np.full(n_outcomes, 1/n_outcomes).tolist() + [0.0]])
+    
+    def infer_cost(w, u_p):
+        c = w @ v - u_p
+        A_eq = np.vstack([np.ones(n_outcomes), w - v])
+        b_eq = np.array([1.0, c])
+        res = linprog(-v, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * n_outcomes, method='highs')
+        if res.success:
+            return res.x
+        return None
+    
+    candidate_probs = []
+    for _, row in accepted.iterrows():
+        w = np.array(row['Contract'])
+        u_p = row['Principal Utility']
+        p = infer_cost(w, u_p)
+        if p is not None:
+            candidate_probs.append(p)
+    
+    if len(candidate_probs) == 0:
+        candidate_probs = [np.ones(n_outcomes) / n_outcomes]
+    
+    X = np.array(candidate_probs)
+    n_components = min(8, max(1, len(X) // 2))
+    gmm = GaussianMixture(n_components=n_components, random_state=42, covariance_type='diag')
+    gmm.fit(X)
+    action_centers = gmm.means_
+    
+    kde = KernelDensity(bandwidth=0.05, kernel='gaussian')
+    kde.fit(X)
+    log_dens = kde.score_samples(X)
+    smoothed_centers = np.exp(log_dens - logsumexp(log_dens))
+    smoothed_centers = (smoothed_centers.reshape(-1, 1) * X).sum(axis=0) / smoothed_centers.sum()
+    action_centers = np.vstack([action_centers, smoothed_centers])
+    
+    def compute_utility(p, w):
+        return p @ w
+    
+    def infer_min_cost_for_action(a_idx, contracts):
+        if len(contracts) == 0:
+            return 0.0
+        utils = [compute_utility(action_centers[a_idx], w) for w in contracts]
+        return min(utils)
+    
+    def infer_max_reject_utility(a_idx, contracts):
+        if len(contracts) == 0:
+            return -np.inf
+        utils = [compute_utility(action_centers[a_idx], w) for w in contracts]
+        return max(utils)
+    
+    accepted_contracts = [np.array(w) for w in accepted['Contract']]
+    rejected_contracts = [np.array(w) for w in rejected['Contract']]
+    
+    costs = []
+    for a_idx in range(len(action_centers)):
+        min_util_accepted = infer_min_cost_for_action(a_idx, accepted_contracts)
+        max_util_rejected = infer_max_reject_utility(a_idx, rejected_contracts)
+        cost = max(min_util_accepted, max_util_rejected + 1e-6, 0.0)
+        costs.append(cost)
+    
+    agent_setting = np.hstack([action_centers, np.array(costs).reshape(-1, 1)])
+    return agent_setting
+```

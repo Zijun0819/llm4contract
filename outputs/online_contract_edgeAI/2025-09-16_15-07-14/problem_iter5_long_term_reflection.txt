@@ -1,0 +1,1 @@
+Cluster with KMeans for efficiency. Use LP to strictly enforce IR/IC via rejection logs and max utility constraints per cluster. Set costs as cluster min utility. Adjust with margins for robustness.

@@ -1,0 +1,42 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.6742 seconds
+The inferred contract is [[ 8.33384417e-02  8.33343324e-02  8.33297678e-02  8.33273515e-02
+   8.33320169e-02  8.33302688e-02  8.33347405e-02  8.33376211e-02
+   8.33349808e-02  8.33362937e-02  8.33291781e-02  8.33350068e-02
+  -2.62550724e-05]]
+→ Best principal utility: 0.0005147643146341397
+→ Inferred agent&principal utility:    0.0 0.0004126474770936832
+→ Agent and principal score:    0 0.00020674168782769934
+[*] Instance 0: 0.00020674168782769934
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.0621 seconds
+The inferred contract is [[8.33359758e-02 8.33322622e-02 8.33279851e-02 8.33306549e-02
+  8.33264008e-02 8.33351740e-02 8.33373374e-02 8.33355715e-02
+  8.33369148e-02 8.33334952e-02 8.33326582e-02 8.33355702e-02
+  1.12573634e-06]]
+→ Best principal utility: 0.0005136400343922483
+→ Inferred agent&principal utility:    0.0 0.0004126474770936832
+→ Agent and principal score:    0 0.00020674168782769934
+[*] Instance 1: 0.00020674168782769934
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.0654 seconds
+The inferred contract is [[ 8.33376700e-02  8.33337718e-02  8.33308254e-02  8.33268257e-02
+   8.33291803e-02  8.33348817e-02  8.33357246e-02  8.33363043e-02
+   8.33363488e-02  8.33303933e-02  8.33324545e-02  8.33356198e-02
+  -3.41719520e-05]]
+→ Best principal utility: 0.000514764529355824
+→ Inferred agent&principal utility:    0.0 0.0004126474770936832
+→ Agent and principal score:    0 0.00020674168782769934
+[*] Instance 2: 0.00020674168782769934
+[*] Average:
+0.00020674168782769932

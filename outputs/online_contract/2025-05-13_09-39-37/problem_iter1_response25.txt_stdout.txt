@@ -1,0 +1,11 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 153, in <module>
+    obj = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 102, in evaluate_llm
+    inferred_agent_setting = llm_agent_solver(v, content)
+  File "E:\Coding\pythonProject\llm4contract\problems\gpt.py", line 25, in agent_solver
+    m = len(v)
+TypeError: list indices must be integers or slices, not str

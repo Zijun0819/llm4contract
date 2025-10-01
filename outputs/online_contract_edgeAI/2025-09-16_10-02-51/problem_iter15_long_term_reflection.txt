@@ -1,0 +1,1 @@
+Tighten cost bounds and refine penalty weights via pairwise IC constraints. Use trust-constr for costs, dynamic clustering, and outcome expansion. Ensure strict IR/IC via direct constraints and epsilon-slack bounds. Prioritize feasibility with multiple initializations.

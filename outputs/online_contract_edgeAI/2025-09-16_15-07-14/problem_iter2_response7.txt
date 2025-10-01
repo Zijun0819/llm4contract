@@ -1,0 +1,76 @@
+```python
+import numpy as np
+from scipy.optimize import minimize, linprog
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+from scipy.spatial.distance import cdist
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    m_outcomes = len(v)
+    
+    if not accepted_logs and not rejected_logs:
+        raise ValueError("No valid logs provided")
+    
+    def infer_probabilities(w, u_target):
+        def objective(p):
+            return np.linalg.norm(p)  # Minimize norm to avoid extreme values
+            
+        constraints = [
+            {'type': 'eq', 'fun': lambda p: np.sum(p) - 1},
+            {'type': 'eq', 'fun': lambda p: np.dot(p, v) - u_target},
+            {'type': 'ineq', 'fun': lambda p: p}
+        ]
+        bounds = [(0, 1) for _ in range(m_outcomes)]
+        init_p = np.ones(m_outcomes) / m_outcomes
+        
+        res = minimize(objective, init_p, method='SLSQP', bounds=bounds, constraints=constraints)
+        return res.x if res.success else None
+    
+    candidate_ps = []
+    for log in accepted_logs:
+        p_candidate = infer_probabilities(log['Contract'], log['Principal Utility'])
+        if p_candidate is not None:
+            candidate_ps.append(p_candidate)
+    
+    if not candidate_ps:
+        candidate_ps = [np.ones(m_outcomes) / m_outcomes]
+    
+    candidate_ps = np.array(candidate_ps)
+    
+    n_candidates = min(20, max(1, len(candidate_ps)))
+    if len(candidate_ps) > n_candidates:
+        kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=10).fit(candidate_ps)
+        cluster_centers = kmeans.cluster_centers_
+        cluster_centers = np.clip(cluster_centers, 0, 1)
+        cluster_centers = cluster_centers / cluster_centers.sum(axis=1, keepdims=True)
+    else:
+        cluster_centers = candidate_ps.copy()
+    
+    all_wages = np.array([log['Contract'] for log in content])
+    
+    def compute_min_cost_for_action(p, accepted_wages, rejected_wages):
+        min_util = float('inf')
+        if len(accepted_wages) > 0:
+            accepted_utils = p @ accepted_wages.T
+            min_util = min(min_util, np.min(accepted_utils))
+        
+        if len(rejected_wages) > 0:
+            rejected_utils = p @ rejected_wages.T
+            min_util = min(min_util, np.min(rejected_utils))
+            
+        return max(0, min_util)
+    
+    accepted_wages = np.array([log['Contract'] for log in accepted_logs])
+    rejected_wages = np.array([log['Contract'] for log in rejected_logs])
+    
+    costs = []
+    for p in cluster_centers:
+        cost = compute_min_cost_for_action(p, accepted_wages, rejected_wages)
+        costs.append(cost)
+    
+    costs = np.array(costs)
+    agent_setting = np.hstack((cluster_centers, costs.reshape(-1, 1)))
+    return agent_setting
+```

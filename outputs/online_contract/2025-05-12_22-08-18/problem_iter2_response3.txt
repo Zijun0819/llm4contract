@@ -1,0 +1,207 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import DBSCAN
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix [p | c] from historical contract logs.
+
+    Each row corresponds to an agent action:
+      - First 5 entries: outcome probability distribution p (sum=1, p>=0)
+      - Last entry: non-negative cost c
+
+    Constraints:
+      - For accepted contracts: ∃ an action a s.t. p_a·contract - c_a >= 0
+      - For rejected contracts: ∀ actions a, p_a·contract - c_a < 0 (strict)
+      
+    Approach:
+      1) Fit candidate outcome distributions p from accepted logs by solving linear constraints involving v, contract, principal utility.
+      2) Cluster candidate ps with DBSCAN to adaptively find number of actions.
+      3) Initialize costs per action from assigned accepted logs.
+      4) Solve LP to find costs c≥0 satisfying IR/IC constraints (with small slack).
+      5) Validate and adjust costs iteratively if needed to ensure strict inequalities.
+    """
+    m = v.size
+    logs_df = pd.DataFrame(content)
+    contracts = np.array(logs_df['Contract'].to_list())  # shape (L,m)
+    principal_utils = np.array(logs_df['Principal Utility'])
+    agent_actions = np.array(logs_df['Agent Action'])
+
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    # Step 1: Fit candidate p distributions from accepted logs
+    # Solve system: sum p =1, p·(v - w) = principal_util, p>=0
+    def fit_p_given_w_u(w, u):
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1)] * m
+        # Objective zero - just feasibility
+        res = linprog(c=np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success and np.all(res.x >= -1e-9):
+            p = np.clip(res.x, 0, 1)
+            s = p.sum()
+            if s > 0:
+                p /= s
+            return p
+        else:
+            # fallback: constrained nonlinear least squares projection
+            p0 = np.ones(m) / m
+            def cons_eq1(p): return np.sum(p) - 1
+            def cons_eq2(p): return np.dot(p, v - w) - u
+            def loss(p): return np.sum(np.square(np.clip(p,0,np.inf) - p0))
+            constraints = [{'type': 'eq', 'fun': cons_eq1}, {'type': 'eq', 'fun': cons_eq2}]
+            bnds = [(0,1)]*m
+            sol = minimize(loss, p0, bounds=bnds, constraints=constraints, method='SLSQP', options={'ftol':1e-9})
+            if sol.success and np.all(sol.x >= -1e-8):
+                p = np.clip(sol.x, 0, 1)
+                s = p.sum()
+                if s > 0:
+                    p /= s
+                return p
+            return None
+
+    candidate_ps = []
+    for i in accepted_idx:
+        p = fit_p_given_w_u(contracts[i], principal_utils[i])
+        if p is not None:
+            candidate_ps.append(p)
+    candidate_ps = np.array(candidate_ps)
+    if len(candidate_ps) == 0:
+        # No accepted logs -> fallback uniform action with zero cost
+        return np.hstack([np.ones((1,m))/m, np.zeros((1,1))])
+
+    # Step 2: Cluster candidate_ps with DBSCAN to find adaptive action count
+    clustering = DBSCAN(eps=0.2, min_samples=3).fit(candidate_ps)
+    labels = clustering.labels_
+
+    # Handle noise points (label = -1) by assigning to nearest cluster centroid
+    unique_labels = set(labels)
+    if -1 in unique_labels:
+        noise_idx = np.where(labels == -1)[0]
+        core_idx = np.where(labels != -1)[0]
+        core_labels = labels[core_idx]
+        core_centers = []
+        core_label_list = sorted(set(core_labels))
+        for lbl in core_label_list:
+            members = candidate_ps[core_idx][core_labels == lbl]
+            center = members.mean(axis=0)
+            core_centers.append(center)
+        core_centers = np.array(core_centers)
+        for ni in noise_idx:
+            dists = np.linalg.norm(core_centers - candidate_ps[ni], axis=1)
+            closest_label = core_label_list[np.argmin(dists)]
+            labels[ni] = closest_label
+
+    unique_labels = sorted(set(labels))
+    n_actions = len(unique_labels)
+    p_mat = np.zeros((n_actions, m))
+    for idx, lbl in enumerate(unique_labels):
+        members = candidate_ps[labels == lbl]
+        centroid = members.mean(axis=0)
+        centroid = np.clip(centroid, 0, None)
+        s = centroid.sum()
+        if s > 0:
+            centroid /= s
+        else:
+            centroid = np.ones(m)/m
+        p_mat[idx] = centroid
+
+    # Step 3: Initialize costs per action from accepted logs assigned by max expected utility p@w
+    assigns = np.full(len(agent_actions), -1, dtype=int)
+    for i in accepted_idx:
+        w = contracts[i]
+        expected_utils = p_mat @ w
+        assigns[i] = np.argmax(expected_utils)
+
+    c_init = np.zeros(n_actions)
+    for a in range(n_actions):
+        assigned_idx = np.where(assigns == a)[0]
+        if len(assigned_idx) > 0:
+            vals = [p_mat[a] @ contracts[j] for j in assigned_idx]
+            c_init[a] = max(0., min(vals))
+        else:
+            c_init[a] = 0.
+
+    # Step 4: LP to find cost vector c≥0 satisfying:
+    # For all rejected logs and actions a: c_a > p_a@w_i (strict: c_a >= p_a@w_i + ε)
+    # For accepted logs: ∃ a s.t. c_a ≤ p_a@w_i (approximate by upper bounds on costs)
+    epsilon = 1e-5
+    n = n_actions
+
+    A_ub = []
+    b_ub = []
+
+    # Rejected constraints: -c_a <= -p_a@w_i - epsilon
+    for i in rejected_idx:
+        w_i = contracts[i]
+        for a in range(n):
+            row = np.zeros(n)
+            row[a] = -1.0
+            A_ub.append(row)
+            b_ub.append(- (p_mat[a] @ w_i) - epsilon)
+
+    # Upper bounds on costs per accepted logs (c_a ≤ max p_a @ w_i for assigned accepted logs)
+    max_wages = np.zeros(n)
+    for a in range(n):
+        pays = [p_mat[a] @ contracts[i] for i in accepted_idx]
+        if pays:
+            max_wages[a] = max(pays)
+        else:
+            max_wages[a] = 10 * np.max(v)  # loose upper bound
+
+    for a in range(n):
+        row = np.zeros(n)
+        row[a] = 1.0
+        A_ub.append(row)
+        b_ub.append(max_wages[a])
+
+    A_ub = np.array(A_ub)
+    b_ub = np.array(b_ub)
+    bounds = [(0,None) for _ in range(n)]
+    c_obj = np.ones(n)  # minimize sum costs for numerical stability
+
+    res = linprog(c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+    if res.success:
+        c_final = res.x
+    else:
+        c_final = c_init
+
+    # Clamp costs to reasonable range
+    c_final = np.clip(c_final, 0, np.max(principal_utils) + 5)
+
+    # Step 5: Validate and fix violations iteratively
+    def violations(c):
+        acc_viol = 0
+        rej_viol = 0
+        for i in accepted_idx:
+            if np.max(p_mat @ contracts[i] - c) < -epsilon:
+                acc_viol += 1
+        for i in rejected_idx:
+            if np.any(p_mat @ contracts[i] - c > -epsilon):
+                rej_viol += 1
+        return acc_viol, rej_viol
+
+    acc_vio, rej_vio = violations(c_final)
+    attempts = 0
+    incr = 1e-3
+    while (acc_vio > 0 or rej_vio > 0) and attempts < 10:
+        # Increase costs for rejected violations
+        for i in rejected_idx:
+            for a in range(n):
+                util = p_mat[a] @ contracts[i] - c_final[a]
+                if util > -epsilon:
+                    c_final[a] = max(c_final[a], p_mat[a] @ contracts[i] + incr)
+        # For accepted violations (rare), decrease costs if possible
+        for i in accepted_idx:
+            if np.max(p_mat @ contracts[i] - c_final) < -epsilon:
+                a_best = np.argmax(p_mat @ contracts[i] - c_final)
+                c_final[a_best] = max(0., p_mat[a_best] @ contracts[i])
+        acc_vio, rej_vio = violations(c_final)
+        attempts += 1
+
+    agent_setting = np.hstack([p_mat, c_final.reshape(-1,1)])
+    return agent_setting
+```

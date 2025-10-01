@@ -1,0 +1,10 @@
+Use adaptive clustering with LP for costs, enforce IC/IR globally, minimize costs for parsimony, and fallback to empirical distributions when infeasible.
+Use LP to infer p, enforce strict IR/IC constraints via combined inequalities, adaptively reduce clusters, and refine costs by rejection slack for robustness.
+Use weighted clustering to capture contract quality; enforce rejection costs strictly above max rejected utilities; add actions only when unexplained; normalize robustly.
+Use adaptive clustering with weighted centroids, iteratively refine costs respecting IR/IC/rejection, add dummy actions for outliers, and ensure probability normalization.
+Leverage LP to jointly infer cost and p, enforce strict IR/IC constraints, adapt clusters by data size, and fallback to empirical outcome distributions if infeasible.
+Use weighted averaging with principal utilities, adaptive clustering, and add unexplained accepted contracts as new actions to improve agent setting inference.
+Use weighted clustering emphasizing better contracts; tighten cost bounds via min accepted utility and max rejected utility; add actions only if unexplained; ensure numerical stability.
+Cluster with outcome-normalized contracts; weigh by principal utility; enforce costs via max utilities on accepted/rejected; add precise actions for unexplained acceptances.
+Incorporate iterative clustering stability checks, enforce stricter IR/IC margins, add dummy actions for outliers, and iteratively refine costs for robust rejection handling.
+Use adaptive clustering with weighted averages, tighten cost bounds via exact IR checks, ensure rejection margins, and add minimal dummy actions for unexplained contracts.

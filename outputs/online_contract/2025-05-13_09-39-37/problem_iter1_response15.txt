@@ -1,0 +1,191 @@
+```python
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans
+from scipy.optimize import linprog
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix from historical logs.
+
+    Args:
+        v (np.ndarray): Principal's reward vector of length 5.
+        content (pd.DataFrame): DataFrame with columns:
+            - 'Contract': list of 5 payments (floats)
+            - 'Principal Utility': float, 0 if contract rejected
+            - 'Agent Action': 1 (accept) or -1 (reject)
+
+    Returns:
+        np.ndarray: n x 6 array where each row corresponds to:
+            - first 5 columns: probabilities over outcomes (sum to 1)
+            - last column: agent cost >= 0
+    """
+    m = len(v)
+    L = len(content)
+
+    # Extract contract matrix and agent actions
+    contracts = np.vstack(content['Contract'].to_numpy())  # shape (L,5)
+    agent_actions = content['Agent Action'].to_numpy()
+    principal_utils = content['Principal Utility'].to_numpy()
+
+    # Step 1: Use accepted contracts to infer candidate outcome distributions
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    # For each accepted contract i: agent expected utility >= 0:
+    # p_i @ w_i - c_i >= 0; and principal utility = p_i @ (v - w_i)
+    # We want to find p_i consistent with contract and principal utility.
+    # For each accepted contract, try to infer p_i solving:
+    #   p_i @ (v - w_i) = principal_utility_i
+    #   sum p_i = 1, p_i >=0
+
+    # We'll collect all inferred p vectors for accepted contracts
+    inferred_ps = []
+
+    for i in accepted_idx:
+        w = contracts[i]
+        r = principal_utils[i]
+        # Solve linear system:
+        # (v - w)^T p = r, sum p = 1, p >=0
+        A = np.vstack([np.ones(m), v - w])
+        b = np.array([1.0, r])
+        bounds = [(0, 1) for _ in range(m)]
+        res = linprog(
+            c=np.zeros(m),
+            A_eq=A,
+            b_eq=b,
+            bounds=bounds,
+            method='highs'
+        )
+        if res.success:
+            inferred_ps.append(res.x)
+        else:
+            # If failed, fallback: approximate by projection on simplex closest to uniform
+            # or skip
+            pass
+
+    if len(inferred_ps) == 0:
+        # No feasible inferred distributions from accepted contracts, fallback:
+        # Use uniform distribution as single action, cost=0
+        p_uniform = np.ones(m) / m
+        return np.hstack([p_uniform.reshape(1, -1), np.array([[0.]])])
+
+    inferred_ps = np.array(inferred_ps)  # shape (n_acc, m)
+
+    # Step 2: Cluster these inferred probabilities to find n actions
+    # Adaptive n: try between 3 and 10, pick best silhouette score if possible
+    # For simplicity, pick n=5 or min(5, number_of_accepted_samples)
+    n_candidates = min(5, len(inferred_ps))
+
+    if n_candidates == 1:
+        p_actions = inferred_ps
+    else:
+        kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=10)
+        kmeans.fit(inferred_ps)
+        p_actions = kmeans.cluster_centers_
+        # Ensure probabilities sum to 1 and non-negative (sometimes KMeans can produce slight negatives)
+        p_actions = np.clip(p_actions, 0, None)
+        p_actions /= p_actions.sum(axis=1, keepdims=True)
+
+    # Step 3: Infer costs c for each action satisfying IR and IC over logs
+
+    # For each contract j and each action a:
+    # agent expected utility: p_a @ w_j - c_a
+    # accept if agent utility >=0; reject if <0
+    # So constraints:
+    # For accepted contracts j: p_{a_j} @ w_j - c_{a_j} >= 0
+    # For rejected contracts j: for all a, p_a @ w_j - c_a < 0
+
+    # However, we do not know which action corresponds to which accepted contract
+    # So we assign each accepted contract to best matching action (highest p_a @ w_j)
+
+    # Step 3.1: Assign each accepted contract to the action maximizing agent expected payoff p_a @ w_j
+    accepted_contracts = contracts[accepted_idx]
+    accepted_utilities = principal_utils[accepted_idx]
+    n_acc = len(accepted_idx)
+
+    # Compute payoff matrix: shape (n_acc, n_candidates)
+    payoff_acc = accepted_contracts @ p_actions.T  # (n_acc, n_candidates)
+
+    assigned_actions = payoff_acc.argmax(axis=1)  # for accepted contracts
+
+    # Step 3.2: Formulate linear program to find costs c_a
+
+    # Variables: c = [c0, c1, ..., c_{n_candidates-1}]
+    # Constraints:
+
+    # For accepted contracts j:
+    # p_{a_j} @ w_j - c_{a_j} >= 0  =>  c_{a_j} <= p_{a_j} @ w_j
+    # For rejected contracts j:
+    # For all actions a:
+    # p_a @ w_j - c_a < 0  =>  c_a > p_a @ w_j
+    # We'll encode with slack epsilon=1e-6 to strict inequalities:
+    # c_a >= p_a @ w_j + epsilon
+
+    epsilon = 1e-6
+    c_bounds = [(0, None) for _ in range(n_candidates)]
+
+    # Constraints matrices for linprog (we minimize sum c)
+    # Setup as:
+    # A_ub c <= b_ub
+    # For accepted: c_a <= p_{a_j}@w_j  (put into A_ub and b_ub)
+    # For rejected: c_a >= p_a @ w_j + epsilon  =>  -c_a <= -p_a @ w_j - epsilon
+
+    A_ub = []
+    b_ub = []
+
+    # Accepted constraints (upper bounds on costs)
+    for j, a_j in enumerate(assigned_actions):
+        val = payoff_acc[j, a_j]
+        row = np.zeros(n_candidates)
+        row[a_j] = 1.0
+        A_ub.append(row)
+        b_ub.append(val)
+
+    # Rejected constraints (lower bounds on costs)
+    if len(rejected_idx) > 0:
+        rejected_contracts = contracts[rejected_idx]  # shape (n_rej, 5)
+        payoff_rej = rejected_contracts @ p_actions.T  # shape (n_rej, n_candidates)
+        # For each rejected contract j and each action a:
+        # c_a >= payoff_rej[j,a] + epsilon  =>  -c_a <= -payoff_rej[j,a] - epsilon
+        for a in range(n_candidates):
+            row = np.zeros(n_candidates)
+            row[a] = -1.0
+            vals = payoff_rej[:, a] + epsilon
+            # for linprog, we need one row per constraint, so add one per rejected contract per action
+            for val in vals:
+                A_ub.append(row)
+                b_ub.append(-val)
+
+    A_ub = np.array(A_ub)
+    b_ub = np.array(b_ub)
+
+    # Objective: minimize sum c_a to find smallest costs consistent with constraints
+    c_obj = np.ones(n_candidates)
+
+    # Solve LP
+    res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=c_bounds, method='highs')
+
+    if not res.success:
+        # If LP fails, fallback: set costs to max over accepted payoffs per action or 0
+        costs = np.zeros(n_candidates)
+        for a in range(n_candidates):
+            idxs = np.where(assigned_actions == a)[0]
+            if len(idxs) > 0:
+                costs[a] = max(payoff_acc[idxs, a].max() - 0.1, 0)
+            else:
+                costs[a] = 0.0
+    else:
+        costs = res.x
+        costs = np.clip(costs, 0, None)
+
+    # Step 4: Final verification (optional): ensure all constraints hold approximately
+    # For accepted: p_a @ w_j - c_a >= 0
+    # For rejected: for all a, p_a @ w_j - c_a < 0
+
+    # Step 5: Return matrix n_candidates x 6 (5 probs + 1 cost)
+    agent_setting = np.hstack([p_actions, costs.reshape(-1, 1)])
+
+    return agent_setting
+```

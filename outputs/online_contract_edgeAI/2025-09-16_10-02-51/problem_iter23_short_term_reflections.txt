@@ -1,0 +1,17 @@
+Use tighter cost bounds and refined clustering to better capture agent constraints and preferences.
+Refine cost bounds with tighter epsilon, use L-BFGS-B optimization and mean initial guess for robustness.
+Focus on tightening cost bounds and refining objective penalties for better constraint satisfaction.
+Refine GMM clustering; tighten cost bounds; improve constraint enforcement.
+Refine cost bounds carefully; balance constraints for realism and penalize violations more effectively.
+1. Enforce stricter feasibility checks on probability vectors.
+2. Use smaller epsilon for tighter constraint margins.
+3. Optimize cost bounds with explicit constraints in SLSQP.
+4. Simplify objective penalty terms to improve convergence.
+5. Ensure cost bounds are informed by both accepted and rejected contracts.
+Use tighter cost bounds, enforce IC constraints per-log, and refine clustering for better accuracy.
+Refine cost bounds with tighter constraints and improved GMM initialization for better consistency.
+1. Refine clustering: Use principal utility to weight inferred distributions.
+2. Improve cost bounds: Consider action-specific constraints from logs.
+3. Optimize for sparsity: Prioritize few actions with distinct cost ranges.
+4. Validate IC constraints: Ensure unique best responses per contract.
+Refine cost bounds with tighter tolerances; optimize violations with quadratic penalties.

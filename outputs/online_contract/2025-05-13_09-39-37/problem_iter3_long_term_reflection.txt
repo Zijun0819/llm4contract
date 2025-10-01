@@ -1,0 +1,1 @@
+Incorporate rejected logs into adaptive clustering (e.g., DBSCAN), tighten IR/IC constraints with LP feasibility checks, iteratively refine costs ensuring numerical stability, and enforce agent utility margins. Use elbow or silhouette methods to select clusters and validate inferred p via robust LP formulations.

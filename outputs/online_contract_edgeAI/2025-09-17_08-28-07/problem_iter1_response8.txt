@@ -1,0 +1,149 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+import itertools
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    m_outcomes = len(v)
+    L = len(content)
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        return np.array([[1/m_outcomes] * m_outcomes + [0.0]])
+    
+    def extract_feasible_distributions():
+        distributions = []
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            u = log['Principal Utility']
+            
+            c_eq = [np.ones(m_outcomes), v - w]
+            d_eq = [1.0, u]
+            bounds = [(0, 1)] * m_outcomes
+            
+            result = linprog(-w, A_eq=c_eq, b_eq=d_eq, bounds=bounds, method='highs')
+            if result.success:
+                distributions.append(result.x)
+        return np.array(distributions)
+    
+    def adaptive_clustering(data, max_clusters=8):
+        if len(data) <= 2:
+            return data, np.arange(len(data))
+        
+        best_score = -np.inf
+        best_n = 2
+        
+        for n in range(2, min(max_clusters + 1, len(data))):
+            gm = GaussianMixture(n_components=n, random_state=42, covariance_type='full')
+            try:
+                gm.fit(data)
+                score = gm.score(data)
+                if score > best_score:
+                    best_score = score
+                    best_n = n
+            except:
+                break
+        
+        gm = GaussianMixture(n_components=best_n, random_state=42, covariance_type='full')
+        gm.fit(data)
+        centers = gm.means_
+        labels = gm.predict(data)
+        
+        return centers, labels
+    
+    feasible_dists = extract_feasible_distributions()
+    if len(feasible_dists) == 0:
+        return np.array([[1/m_outcomes] * m_outcomes + [0.0]])
+    
+    action_probs, cluster_labels = adaptive_clustering(feasible_dists)
+    n_actions = len(action_probs)
+    
+    for i in range(n_actions):
+        action_probs[i] = np.maximum(action_probs[i], 1e-8)
+        action_probs[i] /= action_probs[i].sum()
+    
+    def compute_sophisticated_costs():
+        costs = np.zeros(n_actions)
+        
+        for a in range(n_actions):
+            action_logs = [i for i, label in enumerate(cluster_labels) if label == a]
+            
+            if action_logs:
+                wages_for_action = [np.array(accepted_logs[i]['Contract']) for i in action_logs]
+                utilities_for_action = [accepted_logs[i]['Principal Utility'] for i in action_logs]
+                
+                min_required_utility = min(utilities_for_action)
+                avg_wage = np.mean(wages_for_action, axis=0)
+                costs[a] = max(0, action_probs[a] @ avg_wage - min_required_utility * 0.1)
+            
+            if rejected_logs:
+                rejected_wages = [np.array(log['Contract']) for log in rejected_logs]
+                max_rejected_utility = max(action_probs[a] @ w for w in rejected_wages)
+                costs[a] = max(costs[a], max_rejected_utility + 1e-6)
+        
+        return costs
+    
+    def refine_with_optimization():
+        def objective(params):
+            n = len(action_probs)
+            probs_flat = params[:n * m_outcomes].reshape(n, m_outcomes)
+            costs = params[n * m_outcomes:]
+            
+            penalty = 0
+            
+            for i, prob in enumerate(probs_flat):
+                if prob.sum() != 1.0:
+                    penalty += 1000 * abs(prob.sum() - 1.0)
+                if np.any(prob < 0):
+                    penalty += 1000 * np.sum(np.maximum(0, -prob))
+            
+            for log in accepted_logs:
+                w = np.array(log['Contract'])
+                best_utility = max(prob @ w - cost for prob, cost in zip(probs_flat, costs))
+                if best_utility < 0:
+                    penalty += 1000 * abs(best_utility)
+            
+            for log in rejected_logs:
+                w = np.array(log['Contract'])
+                best_utility = max(prob @ w - cost for prob, cost in zip(probs_flat, costs))
+                if best_utility >= 0:
+                    penalty += 1000 * (best_utility + 1e-6)
+            
+            return penalty
+        
+        initial_costs = compute_sophisticated_costs()
+        initial_params = np.concatenate([action_probs.flatten(), initial_costs])
+        
+        constraints = []
+        for i in range(n_actions):
+            start_idx = i * m_outcomes
+            end_idx = (i + 1) * m_outcomes
+            constraints.append({
+                'type': 'eq',
+                'fun': lambda x, s=start_idx, e=end_idx: x[s:e].sum() - 1.0
+            })
+        
+        bounds = [(0, 1)] * (n_actions * m_outcomes) + [(0, None)] * n_actions
+        
+        try:
+            result = minimize(objective, initial_params, bounds=bounds, constraints=constraints, method='SLSQP')
+            if result.success:
+                refined_probs = result.x[:n_actions * m_outcomes].reshape(n_actions, m_outcomes)
+                refined_costs = result.x[n_actions * m_outcomes:]
+                return refined_probs, refined_costs
+        except:
+            pass
+        
+        return action_probs, initial_costs
+    
+    final_probs, final_costs = refine_with_optimization()
+    
+    agent_setting = np.hstack([final_probs, final_costs.reshape(-1, 1)])
+    
+    return agent_setting
+```

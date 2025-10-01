@@ -1,0 +1,23 @@
+max_fe: 100
+pop_size: 10
+init_pop_size: 30
+mutation_rate: 0.5
+timeout: 20
+diversify_init_pop: true
+problem:
+  problem_name: online_contract
+  obj_type: min
+  func_name: heuristics
+  description: Solving Traveling Salesman Problem (TSP) via stochastic solution sampling
+    following "heuristics". TSP requires finding the shortest path that visits all
+    given nodes and returns to the starting node.
+  problem_setting:
+    n_actions: 100
+    m_outcomes: 4
+    alpha_p: 0.7
+    beta_p: 0.3
+llm_client:
+  _target_: utils.llm_client.openai.OpenAIClient
+  model: gpt-4.1-mini-2025-04-14
+  temperature: 1.0
+  api_key: ${oc.env:OPENAI_API_KEY,null}

@@ -1,0 +1,28 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+Traceback (most recent call last):
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_constraints.py", line 163, in _input_validation
+    self.ub = np.broadcast_to(self.ub, shape)
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\numpy\lib\_stride_tricks_impl.py", line 410, in broadcast_to
+    return _broadcast_to(array, shape, subok=subok, readonly=True)
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\numpy\lib\_stride_tricks_impl.py", line 349, in _broadcast_to
+    it = np.nditer(
+ValueError: input operand has more dimensions than allowed by the axis remapping
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 162, in <module>
+    obj, _ = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 101, in evaluate_llm
+    inferred_agent_setting = llm_agent_solver(v, content)
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py", line 75, in agent_solver
+    else:
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_constraints.py", line 190, in __init__
+    self._input_validation()
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_constraints.py", line 168, in _input_validation
+    raise ValueError(message)
+ValueError: `lb`, `ub`, and `keep_feasible` must be broadcastable to shape `A.shape[0:1]`

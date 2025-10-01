@@ -1,0 +1,73 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    n_candidates = 12
+    m = len(v)
+    L = len(content)
+    
+    def mini_lp_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        """Solve for agent outcome distribution p given wage vector w and utility u."""
+        A_eq = np.array([np.ones(m), v - w])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1)] * m
+        res = linprog(np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    # Step 1: Filter accepted contracts and solve mini LPs
+    candidate_ps = []
+    for _, log in content.iterrows():
+        if log['Agent Action'] == 1:
+            w_i = np.array(log['Contract'])
+            u_i = log['Principal Utility']
+            p_i = mini_lp_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+
+    if not candidate_ps:
+        raise ValueError("No valid accepted logs to infer agent strategies.")
+    
+    all_p = np.array(candidate_ps)
+    
+    # Step 2: Cluster inferred p vectors
+    kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=15).fit(all_p)
+    p_centroids = kmeans.cluster_centers_
+    
+    # Step 3: Assign each accepted log to best-fitting action
+    assigns = np.full(L, -1, dtype=int)
+    for i, (_, log) in enumerate(content.iterrows()):
+        if log['Agent Action'] == 1:
+            w = np.array(log['Contract'])
+            assigns[i] = np.argmax(p_centroids @ w)
+    
+    # Step 4: Compute IR-consistent cost for each action
+    c_ir = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        idx = np.where(assigns == a)[0]
+        if len(idx) > 0:
+            wages = np.array([content.iloc[i]['Contract'] for i in idx])
+            c_ir[a] = np.min([p_centroids[a] @ w for w in wages])
+        else:
+            c_ir[a] = 0.0
+    
+    # Step 5: Ensure rejection consistency
+    rej_idx = [i for i, (_, log) in enumerate(content.iterrows()) if log['Agent Action'] == -1]
+    if len(rej_idx) > 0:
+        wages_rej = np.array([content.iloc[i]['Contract'] for i in rej_idx])
+        rej_utils = np.array([[p @ w for p in p_centroids] for w in wages_rej])
+        c_rej = np.max(rej_utils, axis=0)
+    else:
+        c_rej = np.zeros(n_candidates)
+        
+    # Step 6: Final cost = max(IR, rejection threshold)
+    c_final = np.maximum(c_ir, c_rej)
+    
+    # Step 7: Format and return agent setting
+    agent_setting = np.hstack([p_centroids, c_final.reshape(-1, 1)])
+    return agent_setting
+```

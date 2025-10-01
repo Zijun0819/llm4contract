@@ -1,0 +1,5 @@
+_target_: utils.llm_clients.deepseek.DeepSeekClient
+
+model: deepseek-ai/DeepSeek-V3.1 # LLM model
+temperature: 0.5  # temperature for chat completion
+api_key: null

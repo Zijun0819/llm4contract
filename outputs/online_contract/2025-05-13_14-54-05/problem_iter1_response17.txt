@@ -1,0 +1,207 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting (actions with outcome distributions and costs) that explains all historical logs.
+
+    Args:
+        v: Principal's value vector for 5 outcomes, shape (5,).
+        content: List of dict logs, each with keys:
+            - 'Contract': 5-dim payment vector,
+            - 'Principal Utility': scalar,
+            - 'Agent Action': 1 (accept) or -1 (reject).
+
+    Returns:
+        agent_setting: n_actions x 6 matrix:
+            - first 5 cols: probabilities over outcomes (sum to 1),
+            - last col: cost ≥ 0.
+    """
+    m = len(v)
+    logs = pd.DataFrame(content)
+    contracts = np.stack(logs['Contract'].values)  # shape (L, 5)
+    actions = logs['Agent Action'].values          # shape (L,)
+    util_principal = logs['Principal Utility'].values  # shape (L,)
+
+    # Separate accepted and rejected logs
+    accepted_idx = np.where(actions == 1)[0]
+    rejected_idx = np.where(actions == -1)[0]
+
+    # Step 1: Infer empirical outcome distributions from accepted contracts by solving small LPs:
+    # For accepted contracts, agent's expected utility ≥ 0:
+    # We want to find a set of agent actions (p, c) that explain these acceptances and rejections.
+    # We'll start by clustering accepted contracts' payments to guess a small set of agent actions.
+
+    # Use hierarchical clustering on accepted contracts to get adaptive number of clusters
+    if len(accepted_idx) == 0:
+        # No acceptance logs given: fallback to trivial uniform distribution with zero cost
+        p0 = np.ones((1, m)) / m
+        c0 = np.array([0.0])
+        return np.hstack([p0, c0[:, None]])
+
+    accepted_contracts = contracts[accepted_idx]  # shape (num_accept, 5)
+
+    # Agglomerative clustering with distance threshold to find natural clusters
+    clusterer = AgglomerativeClustering(n_clusters=None, distance_threshold=0.5, linkage='ward')
+    labels = clusterer.fit_predict(accepted_contracts)
+    n_actions = labels.max() + 1
+
+    # Initialize p matrix as mean outcome probs for each cluster:
+    # For each cluster, estimate p from contracts by solving LP that matches principal utility and contract conditions
+
+    # Since we don't observe outcomes, we approximate p by finding p s.t. p @ contract approximates principal utility (which equals p @ contract - cost)
+    # We only have contracts, so we must infer p from contracts themselves as proxies for agent outcome distributions (heuristic)
+
+    # Step 2: For each cluster (action), estimate p by solving optimization:
+    # Variables: p (prob vector of size m)
+    # Constraints: p >=0, sum(p)=1
+    # Objective: minimize squared error over contracts assigned to cluster:
+    # sum_i (p @ contract_i - principal_utility_i - c)^2
+    # But principal_utility_i = principal_value_i - agent_cost (agent_cost unknown)
+    # However, we only know principal utility and contract. We'll approximate p by convex combination of contracts.
+
+    # We approximate each p as a distribution s.t. p roughly proportional to contract weights
+    # Here, we start by normalizing the contracts per cluster row-wise (each contract vector)
+
+    p_estimates = []
+    costs = []
+
+    for a in range(n_actions):
+        idx_a = accepted_idx[labels == a]
+        if len(idx_a) == 0:
+            # No data for this action, assign uniform distribution and 0 cost
+            p_estimates.append(np.ones(m) / m)
+            costs.append(0.0)
+            continue
+
+        cont_a = contracts[idx_a]  # shape (n_a, m)
+        util_a = util_principal[idx_a]  # shape (n_a,)
+
+        # Heuristic: infer p_a as weighted average normalized contract vectors
+        # Normalize contracts row-wise to sum to 1 (interpreted as proxy outcome distribution)
+        cont_norm = cont_a / (cont_a.sum(axis=1, keepdims=True) + 1e-12)
+        p_a = cont_norm.mean(axis=0)
+
+        # Project p_a to simplex to ensure valid probability vector
+        p_a = np.maximum(p_a, 0)
+        p_a /= p_a.sum()
+
+        # Estimate cost c_a with IR constraint: minimal expected utility from accepted contracts ≥ 0
+        # agent utility = p_a @ contract - c_a ≥ 0 → c_a ≤ min_i p_a @ contract_i
+        exp_utils = cont_a @ p_a
+        c_a = exp_utils.min()
+        c_a = max(0.0, c_a)  # cost non-negative
+
+        p_estimates.append(p_a)
+        costs.append(c_a)
+
+    p_estimates = np.array(p_estimates)
+    costs = np.array(costs)
+
+    # Step 3: Check IC and IR constraints for all logs, and refine costs if needed
+
+    # For IR: accepted contracts must satisfy p_a @ w_i - c_a ≥ 0 for some action a
+    # For IC: agent prefers chosen action over others
+
+    # We'll assign actions to accepted logs by max utility:
+    # For each accepted log i, find action a that maximizes p_a @ w_i - c_a
+    assigned_actions = np.zeros_like(actions)
+
+    for i, (w_i, a_i) in enumerate(zip(contracts, actions)):
+        utilities = p_estimates @ w_i - costs
+        if a_i == 1:
+            # acceptance: max utility ≥ 0
+            if utilities.max() < 0:
+                # Inconsistent, bump cost down to enforce feasibility
+                a_best = utilities.argmax()
+                costs[a_best] = min(costs[a_best], (p_estimates[a_best] @ w_i))
+                utilities = p_estimates @ w_i - costs
+            assigned_actions[i] = utilities.argmax()
+        else:
+            # rejection: all utilities < 0
+            if utilities.max() >= 0:
+                # Inconsistent, try to increase costs to enforce rejection
+                costs += (utilities.max() + 1e-3)
+            assigned_actions[i] = -1
+
+    # Step 4: Adjust costs via LP to satisfy IR and IC constraints strictly
+
+    # Define variables: costs (n_actions)
+    # Constraints:
+    # For accepted logs i with assigned action a_i: p_a_i @ w_i - c_a_i ≥ 0  (IR)
+    # For accepted logs i and any other action a': p_a_i @ w_i - c_a_i ≥ p_a' @ w_i - c_a' (IC)
+    # For rejected logs: for all actions a: p_a @ w_i - c_a < 0 (rejection)
+
+    # Build constraints matrices for linprog to minimize sum costs (or keep costs minimal)
+
+    n = n_actions
+    L = len(contracts)
+    c_vector = np.ones(n) * 1e-3  # minimize small positive sum of costs (to keep costs small)
+    A_ub = []
+    b_ub = []
+
+    # IR constraints: c_a ≤ p_a @ w_i
+    for i in accepted_idx:
+        a_i = assigned_actions[i]
+        w_i = contracts[i]
+        p_a = p_estimates[a_i]
+        row = np.zeros(n)
+        row[a_i] = 1.0
+        A_ub.append(row)
+        b_ub.append(p_a @ w_i)
+
+    # IC constraints: For accepted logs and every other action a', p_a_i@w_i - c_a_i ≥ p_a'@w_i - c_a'
+    # => c_a' - c_a_i ≥ p_a'@w_i - p_a_i@w_i
+    for i in accepted_idx:
+        a_i = assigned_actions[i]
+        w_i = contracts[i]
+        p_a_i = p_estimates[a_i]
+        for a_prime in range(n):
+            if a_prime == a_i:
+                continue
+            p_a_prime = p_estimates[a_prime]
+            row = np.zeros(n)
+            row[a_prime] = 1.0
+            row[a_i] = -1.0
+            A_ub.append(row)
+            b_ub.append((p_a_prime @ w_i) - (p_a_i @ w_i))
+
+    # Rejection constraints: for rejected logs i and all actions a, p_a @ w_i - c_a < 0
+    # => c_a > p_a @ w_i
+    # We write as -c_a < -p_a @ w_i → c_a > p_a @ w_i
+    # To keep LP linear: c_a ≥ p_a @ w_i + epsilon (epsilon=1e-3)
+    eps = 1e-4
+    for i in rejected_idx:
+        w_i = contracts[i]
+        for a in range(n):
+            p_a = p_estimates[a]
+            row = np.zeros(n)
+            row[a] = -1.0
+            A_ub.append(row)
+            b_ub.append(-(p_a @ w_i + eps))
+
+    A_ub = np.array(A_ub)
+    b_ub = np.array(b_ub)
+
+    bounds = [(0, None) for _ in range(n)]
+
+    res = linprog(c=c_vector, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+
+    if res.success:
+        costs = res.x
+    else:
+        # If LP fails, fallback to previous costs clipped at zero
+        costs = np.maximum(costs, 0)
+
+    # Final: normalize p_estimates to simplex again and ensure costs non-negative
+    p_estimates = np.clip(p_estimates, 0, None)
+    p_estimates /= p_estimates.sum(axis=1, keepdims=True)
+    costs = np.clip(costs, 0, None)
+
+    agent_setting = np.hstack([p_estimates, costs[:, np.newaxis]])
+    return agent_setting
+```

@@ -1,0 +1,99 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, milp, Bounds, LinearConstraint
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+import pulp
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    m_outcomes = len(v)
+    
+    def solve_wage_problem(w, u_target):
+        c = w
+        A_eq = [np.ones(m_outcomes), v - w]
+        b_eq = [1.0, u_target]
+        bounds = [(0, 1)] * m_outcomes
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    for log in accepted_logs:
+        p_i = solve_wage_problem(log['Contract'], log['Principal Utility'])
+        if p_i is not None:
+            candidate_ps.append(p_i)
+    
+    if not candidate_ps:
+        p_bar = np.ones(m_outcomes) / m_outcomes
+        c_bar = 0.0
+        return np.hstack([p_bar.reshape(1, -1), np.array([[c_bar]])])
+    
+    all_p = np.vstack(candidate_ps)
+    
+    if len(accepted_logs) > 1:
+        bic_values = []
+        max_components = min(10, len(accepted_logs))
+        for n_components in range(1, max_components + 1):
+            try:
+                gmm = GaussianMixture(n_components=n_components, random_state=0, max_iter=100)
+                gmm.fit(all_p)
+                bic_values.append(gmm.bic(all_p))
+            except:
+                bic_values.append(np.inf)
+        optimal_n = np.argmin(bic_values) + 1
+        gmm = GaussianMixture(n_components=optimal_n, random_state=0, max_iter=1000)
+        gmm.fit(all_p)
+        p0 = gmm.means_
+    else:
+        p0 = np.mean(all_p, axis=0, keepdims=True)
+        optimal_n = 1
+    
+    n_actions = len(p0)
+    prob = pulp.LpProblem("AgentInference", pulp.LpMinimize)
+    c_vars = {a: pulp.LpVariable(f"c_{a}", lowBound=0) for a in range(n_actions)}
+    prob += pulp.lpSum(c_vars[a] for a in range(n_actions))
+    
+    for i, log in enumerate(accepted_logs):
+        w_i = log['Contract']
+        for a in range(n_actions):
+            prob += p0[a] @ w_i - c_vars[a] >= 0
+    
+    for log in rejected_logs:
+        w_j = log['Contract']
+        for a in range(n_actions):
+            prob += p0[a] @ w_j - c_vars[a] <= -1e-10
+    
+    prob.solve()
+    c_opt = [pulp.value(c_vars[a]) for a in range(n_actions)]
+    if any(c is None for c in c_opt):
+        c_opt = [0.0] * n_actions
+    
+    max_delta = 1e-3
+    merged = []
+    merged_costs = []
+    active = [True] * n_actions
+    for a in range(n_actions):
+        if active[a]:
+            merged.append(p0[a])
+            merged_costs.append(c_opt[a])
+            for b in range(a + 1, n_actions):
+                if active[b] and np.linalg.norm(p0[a] - p0[b]) < max_delta:
+                    active[b] = False
+                    merged_costs[-1] = max(merged_costs[-1], c_opt[b])
+    
+    if not merged:
+        default_p = np.ones(m_outcomes) / m_outcomes
+        default_c = 0.0
+        agent_setting = np.hstack([default_p.reshape(1, -1), np.array([[default_c]])])
+    else:
+        agent_setting = np.zeros((len(merged), m_outcomes + 1))
+        for idx, (p_vec, c_val) in enumerate(zip(merged, merged_costs)):
+            agent_setting[idx, :-1] = np.maximum(0, np.minimum(1, p_vec))
+            agent_setting[idx, :-1] /= np.sum(agent_setting[idx, :-1])
+            agent_setting[idx, -1] = max(0, c_val)
+    
+    return agent_setting
+```

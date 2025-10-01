@@ -1,0 +1,143 @@
+```python
+import numpy as np
+from scipy.optimize import minimize, Bounds, LinearConstraint, NonlinearConstraint
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver_v2(v: np.ndarray, content: list) -> np.ndarray:
+    m_outcomes = len(v)
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs and not rejected_logs:
+        return np.zeros((1, m_outcomes + 1))
+    
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])
+    accepted_utils = np.array([log['Principal Utility'] for log in accepted_logs])
+    
+    p_candidates = []
+    for i, w in enumerate(accepted_contracts):
+        u_p = accepted_utils[i]
+        c = -np.array(w)
+        A_eq = np.vstack([np.ones(m_outcomes), v])
+        b_eq = np.array([1, u_p])
+        bounds = [(0, 1)] * m_outcomes
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            p_candidates.append(res.x)
+    
+    if not p_candidates:
+        p_candidates = [np.ones(m_outcomes) / m_outcomes]
+    
+    p_array = np.array(p_candidates)
+    n_candidates = min(12, len(p_candidates))
+    
+    if len(p_candidates) > 1:
+        kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(p_array)
+        p_centroids = kmeans.cluster_centers_
+        p_centroids = np.clip(p_centroids, 0, 1)
+        row_sums = p_centroids.sum(axis=1)
+        p_centroids = p_centroids / row_sums[:, np.newaxis]
+    else:
+        p_centroids = np.ones((1, m_outcomes)) / m_outcomes
+    
+    n_actions = len(p_centroids)
+    
+    cost_lb = np.zeros(n_actions)
+    epsilon = 1e-8
+    for a in range(n_actions):
+        p_a = p_centroids[a]
+        min_accepted_util = np.inf
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            agent_util = np.dot(p_a, w)
+            if agent_util >= 0:
+                min_accepted_util = min(min_accepted_util, agent_util)
+        if min_accepted_util != np.inf:
+            cost_lb[a] = max(0, min_accepted_util - epsilon)
+    
+    cost_ub = np.full(n_actions, np.inf)
+    for a in range(n_actions):
+        p_a = p_centroids[a]
+        max_rejected_util = -np.inf
+        for log in rejected_logs:
+            w = np.array(log['Contract'])
+            agent_util = np.dot(p_a, w)
+            if agent_util < 0:
+                max_rejected_util = max(max_rejected_util, agent_util)
+        if max_rejected_util != -np.inf:
+            cost_ub[a] = max(0, -max_rejected_util + epsilon)
+    
+    bounds = Bounds(cost_lb, cost_ub)
+    
+    def ic_constraint(costs):
+        constraints = []
+        for a in range(n_actions):
+            for b in range(n_actions):
+                if a != b:
+                    for log in content:
+                        w = np.array(log['Contract'])
+                        diff = (np.dot(p_centroids[a], w) - costs[a]) - (np.dot(p_centroids[b], w) - costs[b])
+                        constraints.append(diff)
+        return np.array(constraints)
+    
+    def ic_violation(costs):
+        cons = ic_constraint(costs)
+        return np.sum(np.maximum(0, -cons))
+    
+    def ir_constraint(costs):
+        constraints = []
+        for a in range(n_actions):
+            for log in content:
+                w = np.array(log['Contract'])
+                util = np.dot(p_centroids[a], w) - costs[a]
+                if log['Agent Action'] == 1:
+                    constraints.append(util)
+                else:
+                    constraints.append(-util)
+        return np.array(constraints)
+    
+    def ir_violation(costs):
+        cons = ir_constraint(costs)
+        return np.sum(np.maximum(0, -cons))
+    
+    def objective(costs):
+        penalty = 1000.0
+        return penalty * (ic_violation(costs) + ir_violation(costs))
+    
+    constraints = []
+    for a in range(n_actions):
+        for b in range(n_actions):
+            if a != b:
+                for i, log in enumerate(content):
+                    w = np.array(log['Contract'])
+                    def con(x):
+                        return (np.dot(p_centroids[a], w) - x[a]) - (np.dot(p_centroids[b], w) - x[b])
+                    constraints.append(NonlinearConstraint(con, 0, np.inf))
+    
+    for a in range(n_actions):
+        for i, log in enumerate(content):
+            w = np.array(log['Contract'])
+            def con_ir(x):
+                util = np.dot(p_centroids[a], w) - x[a]
+                if log['Agent Action'] == 1:
+                    return util
+                else:
+                    return -util
+            constraints.append(NonlinearConstraint(con_ir, 0, np.inf))
+    
+    initial_costs = (cost_lb + np.minimum(cost_ub, cost_lb + 1.0)) / 2.0
+    res = minimize(objective, initial_costs, method='trust-constr', bounds=bounds, constraints=constraints, options={'maxiter': 1000, 'verbose': 0})
+    
+    if res.success:
+        final_costs = res.x
+    else:
+        final_costs = cost_lb
+    
+    agent_setting = np.hstack([p_centroids, final_costs.reshape(-1, 1)])
+    return agent_setting
+```

@@ -1,0 +1,10 @@
+Cluster by agent utility differences, jointly optimize probabilities and costs via QP, ensure strict IR/IC constraints, adapt action count to data complexity.
+Incorporate LP for cost fitting, enforce strict IR/IC constraints, adaptively select clusters, and refine p from cluster centers for robust agent setting inference.
+Incorporate precise LP-based outcome inference, cluster representative distributions, assign contracts by max expected utility, and iteratively adjust costs ensuring IR and strict IC constraints.
+Use flexible clustering (like DBSCAN) with adaptive action counts; fit p considering principal utility; solve LP for costs enforcing strict IR/IC constraints robustly.
+Cluster accepted contracts’ utilities, jointly optimize distributions and costs via convex programs; enforce strict IR, IC, and rejection constraints globally for coherent agent actions.
+Cluster inferred outcome distributions, jointly optimize costs enforcing IR, IC, rejection; tighten LP constraints; add slack for strict rejection; normalize probabilities precisely.
+Cluster contracts by accepted wages, adaptively tune cluster count, enforce strict IR/IC/rejection linear constraints, and iteratively solve for costs ensuring feasibility.
+Cluster contracts by outcomes, jointly optimize probabilities and costs via LP with IR/IC constraints, project to simplex, and minimize total cost for consistent agent settings.
+Cluster contracts by acceptance regions, jointly optimize outcome distributions and costs via LP with IR, IC, rejection constraints, and simplex projection for stability.
+Cluster on inferred outcome distributions, jointly optimize probabilities and costs via LP for IR/IC, ensure rejected contracts negative utility with slack.

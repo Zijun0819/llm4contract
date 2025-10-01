@@ -1,0 +1,56 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    def solve_feasible_p(contract, u_principal):
+        n = len(contract)
+        A_eq = np.vstack([np.ones(n), v - contract])
+        b_eq = np.array([1.0, u_principal])
+        res = linprog(-contract, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * n, method='highs')
+        return res.x if res.success else None
+
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        n_outcomes = len(v)
+        return np.hstack([np.eye(n_outcomes), np.zeros((n_outcomes, 1))])
+    
+    candidate_ps = []
+    for log in accepted_logs:
+        p_candidate = solve_feasible_p(np.array(log['Contract']), log['Principal Utility'])
+        if p_candidate is not None:
+            candidate_ps.append(p_candidate)
+    
+    if not candidate_ps:
+        n_outcomes = len(v)
+        return np.hstack([np.eye(n_outcomes), np.zeros((n_outcomes, 1))])
+    
+    candidate_ps = np.array(candidate_ps)
+    n_clusters = min(50, max(2, len(candidate_ps) // 5))
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10).fit(candidate_ps)
+    cluster_centers = kmeans.cluster_centers_
+    labels = kmeans.labels_
+    
+    cluster_costs = np.zeros(n_clusters)
+    for i in range(n_clusters):
+        cluster_indices = np.where(labels == i)[0]
+        if cluster_indices.size > 0:
+            contracts = np.array([accepted_logs[j]['Contract'] for j in cluster_indices])
+            utilities = contracts @ cluster_centers[i]
+            cluster_costs[i] = np.min(utilities)
+        else:
+            cluster_costs[i] = 0.0
+    
+    if rejected_logs:
+        rej_contracts = np.array([log['Contract'] for log in rejected_logs])
+        rej_utilities = rej_contracts @ cluster_centers.T
+        max_rej_utilities = np.max(rej_utilities, axis=0)
+        cluster_costs = np.maximum(cluster_costs, max_rej_utilities + 1e-10)
+    
+    cluster_costs = np.maximum(cluster_costs, 0)
+    
+    return np.hstack([cluster_centers, cluster_costs.reshape(-1, 1)])
+```

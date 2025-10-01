@@ -1,0 +1,189 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import DBSCAN
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting (actions' outcome distributions and costs) consistent with
+    historical interaction logs: contracts, principal utilities, and agent accept/reject actions.
+
+    Args:
+        v (np.ndarray): Principal's reward vector for 5 outcomes, shape (5,).
+        content (list[dict]): Historical logs, each dict with keys:
+            'Contract' (list/np.ndarray of 5 payments),
+            'Principal Utility' (float, zero if agent rejects),
+            'Agent Action' (1 accept, -1 reject).
+
+    Returns:
+        np.ndarray: n x 6 matrix (n actions), columns:
+            first 5: outcome distributions (sum to 1),
+            last: nonnegative agent cost.
+    """
+    m = len(v)  # outcomes = 5
+    logs_df = pd.DataFrame(content)
+    L = len(logs_df)
+
+    # Extract arrays for convenience
+    contracts = np.vstack(logs_df['Contract'].to_numpy())  # shape (L,5)
+    principal_utils = logs_df['Principal Utility'].to_numpy()
+    agent_actions = logs_df['Agent Action'].to_numpy()
+
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    # If no accepted logs, return trivial single action: uniform distribution, zero cost
+    if len(accepted_idx) == 0:
+        uniform_p = np.ones(m) / m
+        return np.hstack([uniform_p.reshape(1, -1), np.array([[0.0]])])
+
+    # Step 1: For each accepted log, solve LP to find plausible p vector
+    # Variables: p (5-dimensional probability vector)
+    # Constraints:
+    #  - sum p_i = 1
+    #  - p_i >= 0
+    #  - (v - w).p = principal_utility (equality)
+    #  - p.w >= 0 (agent utility >= 0)
+    # Objective: minimize L1 distance to uniform distribution (to get "nice" p)
+    candidate_p = []
+    for idx in accepted_idx:
+        w = contracts[idx]
+        pu = principal_utils[idx]
+
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, pu])
+
+        A_ub = -w.reshape(1, -1)
+        b_ub = np.array([0.0])
+
+        bounds = [(0, 1) for _ in range(m)]
+
+        c = np.ones(m) / m  # minimize sum p_i * c_i (distance to uniform)
+
+        res = linprog(c=c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq,
+                      bounds=bounds, method='highs')
+
+        if res.success:
+            p_sol = res.x
+            # Numerical cleanup
+            p_sol[p_sol < 0] = 0
+            p_sol = p_sol / (np.sum(p_sol) + 1e-12)
+            candidate_p.append(p_sol)
+            continue
+
+        # If failed, relax p.w >= 0 constraint and try again
+        res_relax = linprog(c=c, A_eq=A_eq, b_eq=b_eq,
+                            bounds=bounds, method='highs')
+        if res_relax.success:
+            p_sol = res_relax.x
+            p_sol[p_sol < 0] = 0
+            p_sol = p_sol / (np.sum(p_sol) + 1e-12)
+            candidate_p.append(p_sol)
+            continue
+
+        # Fallback: uniform distribution
+        candidate_p.append(np.ones(m) / m)
+
+    candidate_p = np.array(candidate_p)
+
+    # Step 2: Incorporate rejected logs to augment candidate points
+    # For rejected logs, agent utility < 0 for all actions, so p.w < cost
+    # We do not know p for rejected logs, but can use their contracts as negative examples
+    # Add rejected contracts normalized to candidate_p for clustering to separate them
+
+    # Normalize candidate_p and rejected contracts for clustering
+    # Normalize candidate_p rows to sum to 1 (already done), rejected contracts normalize by max element to reduce scale
+    rejected_contracts = contracts[rejected_idx] if len(rejected_idx) > 0 else np.empty((0, m))
+    if len(rejected_contracts) > 0:
+        rejected_norm = rejected_contracts / (np.max(rejected_contracts, axis=1, keepdims=True) + 1e-12)
+        # Stack candidate_p and rejected_norm for clustering, label them separately
+        clustering_input = np.vstack([candidate_p, rejected_norm])
+        # Use DBSCAN to find clusters, eps tuned for small distances in simplex space
+        clustering = DBSCAN(eps=0.07, min_samples=2, metric='euclidean').fit(clustering_input)
+        labels = clustering.labels_
+        # Separate labels for candidate_p and rejected_norm
+        candidate_labels = labels[:len(candidate_p)]
+        rejected_labels = labels[len(candidate_p):]
+    else:
+        # No rejected logs, cluster candidate_p only
+        clustering = DBSCAN(eps=0.07, min_samples=2, metric='euclidean').fit(candidate_p)
+        candidate_labels = clustering.labels_
+        rejected_labels = np.array([])
+
+    # If all candidate points are noise (-1), assign all to one cluster 0
+    if np.all(candidate_labels == -1):
+        candidate_labels[:] = 0
+
+    # Assign noise points in candidate_p to nearest cluster center
+    unique_labels = np.unique(candidate_labels)
+    unique_labels = unique_labels[unique_labels != -1]
+    if len(unique_labels) == 0:
+        unique_labels = np.array([0])
+        candidate_labels[:] = 0
+
+    noise_idx = np.where(candidate_labels == -1)[0]
+    if noise_idx.size > 0:
+        centers = np.array([candidate_p[candidate_labels == ul].mean(axis=0) for ul in unique_labels])
+        for ni in noise_idx:
+            dists = np.linalg.norm(centers - candidate_p[ni], axis=1)
+            candidate_labels[ni] = unique_labels[np.argmin(dists)]
+
+    n_actions = len(unique_labels)
+    # Compute cluster centers as mean of candidate_p points in each cluster
+    p_cluster = np.zeros((n_actions, m))
+    for i, ul in enumerate(unique_labels):
+        cluster_points = candidate_p[candidate_labels == ul]
+        mean_p = cluster_points.mean(axis=0)
+        mean_p[mean_p < 0] = 0
+        mean_p /= (mean_p.sum() + 1e-12)
+        p_cluster[i] = mean_p
+
+    # Step 3: Infer costs c for each action using IR and IC constraints
+
+    # IR: For each action a, cost_a <= min_{accepted logs assigned to a} p_a.w
+    # Assign each accepted log to cluster a by candidate_labels
+    # accepted_idx aligns with candidate_p rows, so cluster assignment is candidate_labels
+
+    # Map accepted_idx positions to cluster indices
+    accepted_to_cluster = candidate_labels
+
+    cost_candidates = np.zeros(n_actions)
+    for i, ul in enumerate(unique_labels):
+        # Find accepted logs assigned to cluster ul
+        assigned_idx = np.where(accepted_to_cluster == ul)[0]
+        if len(assigned_idx) == 0:
+            cost_candidates[i] = 0.0  # no accepted logs assigned, minimal cost zero
+            continue
+        w_assigned = contracts[accepted_idx[assigned_idx]]  # contracts for accepted logs assigned here
+        vals = w_assigned @ p_cluster[i]  # agent utility p_a.w for accepted logs
+        cost_candidates[i] = vals.min()  # cost <= min agent utility for IR
+
+    # IC: For rejected logs, agent utility < 0 for all actions
+    # So cost_a > max_{rejected} p_a.w for each action a
+
+    if len(rejected_idx) > 0:
+        w_rejected = contracts[rejected_idx]
+        for i in range(n_actions):
+            agent_util_rej = w_rejected @ p_cluster[i]
+            max_rej_util = agent_util_rej.max()
+            # cost_a must be strictly greater than max agent utility on rejected contracts
+            cost_candidates[i] = max(cost_candidates[i], max_rej_util + 1e-8)
+
+    # Enforce cost nonnegativity
+    cost_candidates = np.clip(cost_candidates, 0, None)
+
+    # Final numerical cleanup of distributions
+    for i in range(n_actions):
+        p_cluster[i] = np.clip(p_cluster[i], 0, None)
+        s = p_cluster[i].sum()
+        if s <= 1e-12:
+            p_cluster[i] = np.ones(m) / m
+        else:
+            p_cluster[i] /= s
+
+    # Return final agent setting matrix (n_actions x 6)
+    agent_setting = np.hstack([p_cluster, cost_candidates.reshape(-1, 1)])
+
+    return agent_setting
+```

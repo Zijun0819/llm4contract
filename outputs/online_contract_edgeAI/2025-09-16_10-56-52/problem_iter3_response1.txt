@@ -1,0 +1,95 @@
+```python
+import numpy as np
+import pandas as pd
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import KernelDensity
+from scipy.optimize import linprog, minimize
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = 12
+    logs = pd.DataFrame(content)
+    accepted = logs[logs['Agent Action'] == 1]
+    rejected = logs[logs['Agent Action'] == -1]
+    
+    def solve_min_lp(w, u_threshold):
+        c = -w
+        A_eq = np.vstack([np.ones(n_outcomes), v - w])
+        b_eq = np.array([1.0, u_threshold])
+        bounds = [(0, 1) for _ in range(n_outcomes)]
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            return res.x
+        return None
+    
+    candidate_p = []
+    for idx, row in accepted.iterrows():
+        w = np.array(row['Contract'])
+        u_actual = row['Principal Utility']
+        p_sol = solve_min_lp(w, u_actual)
+        if p_sol is not None:
+            candidate_p.append(p_sol)
+    
+    if not candidate_p:
+        candidate_p = [np.ones(n_outcomes) / n_outcomes]
+    
+    X = np.array(candidate_p)
+    n_components_range = range(1, min(10, len(X) + 1))
+    best_bic = np.inf
+    best_gmm = None
+    for n_components in n_components_range:
+        gmm = GaussianMixture(n_components=n_components, random_state=0, covariance_type='diag')
+        gmm.fit(X)
+        bic = gmm.bic(X)
+        if bic < best_bic:
+            best_bic = bic
+            best_gmm = gmm
+    
+    action_centers = best_gmm.means_
+    n_actions = action_centers.shape[0]
+    
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.05).fit(X)
+    smoothed_centers = []
+    for center in action_centers:
+        log_prob = kde.score_samples(center.reshape(1, -1))
+        if np.exp(log_prob) > 0.1:
+            smoothed_centers.append(center)
+        else:
+            smoothed_centers.append(np.clip(center, 0, 1))
+    action_centers = np.array(smoothed_centers)
+    action_centers = action_centers / action_centers.sum(axis=1, keepdims=True)
+    
+    def compute_utility(p, w):
+        return np.dot(p, w)
+    
+    accepted_contracts = [np.array(row['Contract']) for _, row in accepted.iterrows()]
+    rejected_contracts = [np.array(row['Contract']) for _, row in rejected.iterrows()]
+    all_contracts = accepted_contracts + rejected_contracts
+    
+    def objective(costs):
+        total_violation = 0
+        for w in accepted_contracts:
+            utilities = [compute_utility(p, w) - cost for p, cost in zip(action_centers, costs)]
+            max_util = max(utilities)
+            if max_util < 0:
+                total_violation += abs(max_util)
+            for i in range(n_actions):
+                if utilities[i] < max_util - 1e-6:
+                    total_violation += abs(max_util - utilities[i])
+        for w in rejected_contracts:
+            utilities = [compute_utility(p, w) - cost for p, cost in zip(action_centers, costs)]
+            max_util = max(utilities)
+            if max_util >= 0:
+                total_violation += abs(max_util)
+        return total_violation
+    
+    def constraint(costs):
+        return costs
+    
+    initial_costs = np.zeros(n_actions)
+    bounds = [(0, None) for _ in range(n_actions)]
+    result = minimize(objective, initial_costs, bounds=bounds, constraints={'type': 'ineq', 'fun': constraint})
+    final_costs = result.x
+    
+    agent_setting = np.hstack([action_centers, final_costs.reshape(-1, 1)])
+    return agent_setting
+```

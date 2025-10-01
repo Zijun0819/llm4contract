@@ -1,0 +1,1 @@
+Use adaptive, weighted KMeans with inertia elbow to cluster contracts by outcomes/payments; enforce strict, margin-tight IR/IC constraints including rejected contracts; normalize probabilities carefully; refine costs post-clustering; ensure cluster non-emptiness and avoid iterative LP complexity for robust agent setting inference.

@@ -1,0 +1,98 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver(v: np.ndarray, content: list) -> np.ndarray:
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    m_outcomes = len(v)
+    
+    if not accepted_logs:
+        p0 = np.random.dirichlet(np.ones(m_outcomes), size=3)
+        c0 = np.zeros(3)
+        return np.hstack([p0, c0[:, np.newaxis]])
+    
+    inferred_ps = []
+    for log in accepted_logs:
+        w = np.array(log['Contract'])
+        u_principal = log['Principal Utility']
+        if abs(u_principal) < 1e-10:
+            p_est = w / np.sum(w)
+        else:
+            try:
+                res = minimize(
+                    lambda p: -np.sum(p * np.log(p + 1e-10)),
+                    x0=np.ones(m_outcomes)/m_outcomes,
+                    constraints=[
+                        {'type': 'eq', 'fun': lambda p: np.sum(p) - 1},
+                        {'type': 'eq', 'fun': lambda p: np.dot(p, v) - u_principal}
+                    ],
+                    bounds=[(0, 1)] * m_outcomes
+                )
+                p_est = res.x if res.success else w / np.sum(w)
+            except:
+                p_est = w / np.sum(w)
+        inferred_ps.append(p_est)
+    
+    inferred_ps = np.array(inferred_ps)
+    
+    n_candidates = min(max(3, len(accepted_logs)//2), 10)
+    if len(inferred_ps) > n_candidates:
+        kmeans = KMeans(n_clusters=n_candidates, random_state=0, n_init=10).fit(inferred_ps)
+        p_centers = kmeans.cluster_centers_
+    else:
+        p_centers = inferred_ps
+    
+    action_assign = []
+    for log in accepted_logs:
+        w_vec = np.array(log['Contract'])
+        utils = p_centers @ w_vec
+        action_assign.append(np.argmax(utils))
+    
+    c_min = np.zeros(len(p_centers))
+    for a in range(len(p_centers)):
+        indices = [i for i, act in enumerate(action_assign) if act == a]
+        if indices:
+            w_mat = np.array([accepted_logs[i]['Contract'] for i in indices])
+            agent_utils = p_centers[a] @ w_mat.T
+            c_min[a] = np.min(agent_utils)
+        else:
+            c_min[a] = 0.0
+    
+    if rejected_logs:
+        for log in rejected_logs:
+            w_rej = np.array(log['Contract'])
+            utils_rej = p_centers @ w_rej
+            max_util = np.max(utils_rej)
+            if max_util >= 0:
+                violating_actions = np.where(utils_rej >= c_min - 1e-6)[0]
+                for a in violating_actions:
+                    c_min[a] = max(c_min[a], max_util + 1e-6)
+    
+    for a in range(len(p_centers)):
+        if c_min[a] < 0:
+            c_min[a] = 0.0
+    
+    agent_setting = np.hstack([p_centers, c_min.reshape(-1, 1)])
+    
+    for log in content:
+        w_test = np.array(log['Contract'])
+        utils_test = p_centers @ w_test - c_min
+        max_util_test = np.max(utils_test)
+        expected_action = 1 if max_util_test >= -1e-6 else -1
+        if expected_action != log['Agent Action']:
+            if log['Agent Action'] == 1:
+                best_a = np.argmax(utils_test)
+                c_min[best_a] = min(c_min[best_a], p_centers[best_a] @ w_test)
+            else:
+                violating_actions = np.where(utils_test >= -1e-6)[0]
+                for a in violating_actions:
+                    c_min[a] = max(c_min[a], p_centers[a] @ w_test + 1e-6)
+    
+    agent_setting = np.hstack([p_centers, c_min.reshape(-1, 1)])
+    return agent_setting
+```

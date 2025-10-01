@@ -1,0 +1,1 @@
+Weight rejected logs heavily in GMM clustering. Tighten IR/IC penalties with adaptive weights, use stricter tolerances, and ensure nonnegative costs for precise, robust agent setting inference.

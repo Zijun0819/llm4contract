@@ -1,0 +1,21 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 170, in <module>
+    obj, _ = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 105, in evaluate_llm
+    inferred_agent_setting = llm_agent_solver(v, content)
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py", line 22, in agent_solver
+    if max_clusters > 1:
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py", line 16, in recover_p
+    w_accepted = np.array([log['Contract'] for log in accepted_logs])
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog.py", line 649, in linprog
+    lp, solver_options = _parse_linprog(lp, options, meth)
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_util.py", line 1026, in _parse_linprog
+    lp = _clean_inputs(lp._replace(A_ub=A_ub, A_eq=A_eq))
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_util.py", line 358, in _clean_inputs
+    raise ValueError(
+ValueError: Invalid input for linprog: A_eq must have exactly two dimensions, and the number of columns in A_eq must be equal to the size of c

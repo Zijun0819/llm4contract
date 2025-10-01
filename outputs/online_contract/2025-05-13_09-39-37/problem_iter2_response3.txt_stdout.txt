@@ -1,0 +1,33 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+→ Best principal utility: 5.090206339420538
+→ Inferred agent&principal utility:    -0.20713780015353622 4.244873546619916
+→ Agent and principal score:    100 -0.20713781015353572
+[*] Instance 0: 99.79286218984646
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+→ Best principal utility: 5.942959094509659
+→ Inferred agent&principal utility:    -0.952574405023431 1.853060885265087
+→ Agent and principal score:    100 0.4469007144816486
+[*] Instance 1: 100.44690071448164
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+→ Best principal utility: 8.306281910669068
+→ Inferred agent&principal utility:    -1.1524913535683858 2.1656824216469217
+→ Agent and principal score:    100 1.402570306732164
+[*] Instance 2: 101.40257030673216
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+→ Best principal utility: 5.002253118912277
+→ Inferred agent&principal utility:    -0.5456056890720777 4.70873800667208
+→ Agent and principal score:    100 -0.5456056990720777
+[*] Instance 3: 99.45439430092792
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_05.pkl with 5 instances.
+→ Best principal utility: 3.4351046687638447
+→ Best principal utility: 4.939111205440611
+→ Inferred agent&principal utility:    -1.2444065348742597 4.202058768466968
+→ Agent and principal score:    100 -0.7669540997031237
+[*] Instance 4: 99.23304590029687
+[*] Average:
+100.065954682457

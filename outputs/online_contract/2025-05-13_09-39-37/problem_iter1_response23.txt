@@ -1,0 +1,173 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infers an agent setting matrix given principal's value vector v and 
+    historical interactions content.
+    
+    Output shape: n_actions x 6 (5 outcome probabilities + 1 cost)
+    """
+    # Parameters
+    m = len(v)  # number of outcomes
+    L = len(content)
+    
+    # Parse contracts, principal utilities, and agent actions
+    contracts = np.array([log['Contract'] for log in content])  # shape (L, m)
+    utilities = np.array([log['Principal Utility'] for log in content])  # shape (L,)
+    agent_actions = np.array([log['Agent Action'] for log in content])  # shape (L,)
+    
+    # Step 1: Separate accepted and rejected contracts
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+    
+    # If no accepted contracts, return trivial single action with uniform p and zero cost
+    if len(accepted_idx) == 0:
+        p_trivial = np.ones(m) / m
+        c_trivial = 0.0
+        return np.hstack([p_trivial, c_trivial])[np.newaxis, :]
+    
+    accepted_contracts = contracts[accepted_idx]  # shape (A, m)
+    accepted_utils = utilities[accepted_idx]     # shape (A,)
+    
+    # Step 2: Estimate agent outcome distributions p for accepted contracts using LP
+    # For each accepted contract w_i and principal utility u_i, solve:
+    # max_p w_i^T p s.t. p >=0, sum p=1, and p^T v = u_i
+    # We fix the expected principal utility = u_i, and maximize expected payment to get p
+    def estimate_p(w, u):
+        # variables: p (length m)
+        # maximize w^T p
+        # constraints: sum p =1, p^T v = u, p >=0
+        c_obj = -w  # maximize w^T p <=> minimize -w^T p
+        A_eq = np.vstack([np.ones(m), v])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1)] * m
+        res = linprog(c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            return res.x
+        else:
+            return None
+    
+    estimated_ps = []
+    valid_indices = []
+    for idx in range(len(accepted_idx)):
+        w = accepted_contracts[idx]
+        u = accepted_utils[idx]
+        p_est = estimate_p(w, u)
+        if p_est is not None and np.all(p_est >= -1e-8):
+            estimated_ps.append(p_est)
+            valid_indices.append(accepted_idx[idx])
+    if len(estimated_ps) == 0:
+        # fallback: uniform distribution + zero cost
+        p_trivial = np.ones(m)/m
+        c_trivial = 0.0
+        return np.hstack([p_trivial, c_trivial])[np.newaxis, :]
+    estimated_ps = np.array(estimated_ps)  # shape (A_valid, m)
+    
+    # Step 3: Choose number of clusters adaptively by elbow heuristic on SSE
+    max_clusters = min(10, len(estimated_ps))
+    sse_list = []
+    for k in range(1, max_clusters+1):
+        km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(estimated_ps)
+        sse_list.append(km.inertia_)
+    # Elbow detection: pick k where relative drop slows down
+    diffs = np.diff(sse_list)
+    second_diffs = np.diff(diffs)
+    # If second derivative positive, elbow around that point
+    elbow_k = 1
+    for i in range(len(second_diffs)):
+        if second_diffs[i] > -1e-3:
+            elbow_k = i + 2
+            break
+    n_actions = elbow_k
+    
+    # Step 4: Cluster estimated_ps into n_actions clusters
+    kmeans = KMeans(n_clusters=n_actions, n_init=15, random_state=42).fit(estimated_ps)
+    centers = kmeans.cluster_centers_  # shape (n_actions, m)
+    
+    # Project centers to simplex (may be slightly off due to numeric)
+    def proj_simplex(y):
+        # Euclidean projection onto probability simplex
+        u = np.sort(y)[::-1]
+        cssv = np.cumsum(u)
+        rho = np.where(u + (1 - cssv) / (np.arange(len(u)) + 1) > 0)[0][-1]
+        theta = (cssv[rho] -1) / (rho+1)
+        return np.maximum(y - theta, 0)
+    centers = np.array([proj_simplex(c) for c in centers])
+    
+    # Step 5: Assign accepted logs to closest cluster center in L1 norm (probabilities)
+    dist_matrix = np.abs(estimated_ps[:, None, :] - centers[None, :, :]).sum(axis=2)  # (A_valid, n_actions)
+    assigns = dist_matrix.argmin(axis=1)
+    
+    # Step 6: Infer costs for actions:
+    # agent utility for action a on contract w is p_a^T w - c_a
+    # For accepted logs assigned to a: p_a^T w - c_a >= 0  => c_a <= min p_a^T w over assigned logs
+    # For rejected logs: for all a, p_a^T w - c_a < 0 => c_a > max p_a^T w over rejected logs
+    # We'll solve a LP to find minimal c satisfying these IR and rejection constraints
+    
+    # Compute p_a^T w for all contracts and actions
+    payoffs = centers @ contracts.T  # (n_actions, L)
+    
+    # Constraints arrays for LP on c (variables c in R^{n_actions})
+    # For accepted logs i with assigned action a_i:
+    # c[a_i] <= p_a_i^T w_i  (IR)
+    # For rejected logs i and for all a:
+    # c[a] > p_a^T w_i  (rejection)
+    
+    # We rewrite: c[a_i] <= min_pays among assigned logs a_i
+    # For rejection: c[a] >= max_pays over rejected logs + epsilon
+    
+    INF = 1e9
+    epsilon = 1e-5
+    # Build constraints
+    # For each action a, get min payoff over assigned accepted logs
+    c_upper_bounds = np.full(n_actions, INF)
+    for a in range(n_actions):
+        # accepted logs assigned to a in valid_indices
+        idxs_a = [valid_indices[i] for i, assign_a in enumerate(assigns) if assign_a == a]
+        if len(idxs_a) > 0:
+            pays = payoffs[a, idxs_a]
+            c_upper_bounds[a] = pays.min()
+        else:
+            # no accepted logs assigned: upper bound can be large
+            c_upper_bounds[a] = INF
+    
+    # For rejected logs, get max payoff per action
+    if len(rejected_idx) > 0:
+        pays_rej = payoffs[:, rejected_idx]  # shape (n_actions, R)
+        c_lower_bounds = pays_rej.max(axis=1) + epsilon  # strict inequality converted to >= with margin
+    else:
+        c_lower_bounds = np.zeros(n_actions)
+    
+    # Final c should satisfy:
+    # c <= c_upper_bounds
+    # c >= c_lower_bounds
+    # c >= 0
+    lb = np.maximum(c_lower_bounds, 0)
+    ub = c_upper_bounds
+    
+    # If any ub < lb, no feasible solution => relax by shifting ub up
+    for i in range(n_actions):
+        if ub[i] < lb[i]:
+            ub[i] = lb[i] + 1e-3
+    
+    # As objective, minimize sum of costs (or zeros)
+    c_obj = np.ones(n_actions)
+    
+    # Use linprog to minimize sum c subject to lb <= c <= ub
+    bounds = [(lb[i], ub[i]) for i in range(n_actions)]
+    res = linprog(c_obj, bounds=bounds, method='highs')
+    if res.success:
+        costs = res.x
+    else:
+        # fallback: midpoint
+        costs = (lb + ub) / 2
+    
+    # Step 7: Return agent setting matrix (rows: actions)
+    # Columns: first m outcomes probabilities, last cost
+    agent_setting = np.hstack([centers, costs[:, np.newaxis]])
+    return agent_setting
+```

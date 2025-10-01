@@ -1,0 +1,130 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import KFold
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = len(v)
+    df = pd.DataFrame(content)
+    accepted = df[df['Agent Action'] == 1]
+    rejected = df[df['Agent Action'] == -1]
+    
+    if accepted.empty and rejected.empty:
+        default_p = np.ones(n_outcomes) / n_outcomes
+        default_c = 0.0
+        return np.hstack([default_p.reshape(1, -1), np.array([[default_c]])])
+    
+    candidate_probs = []
+    for _, row in accepted.iterrows():
+        w = np.array(row['Contract'])
+        u_p = row['Principal Utility']
+        A_eq = np.vstack([np.ones(n_outcomes), v - w])
+        b_eq = np.array([1.0, u_p])
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * n_outcomes, method='highs', tol=1e-12)
+        if res.success:
+            p = res.x
+            if np.all(p >= -1e-10) and abs(np.sum(p) - 1) < 1e-10:
+                candidate_probs.append(np.clip(p, 0, 1))
+    
+    if not candidate_probs:
+        candidate_probs = [np.ones(n_outcomes) / n_outcomes]
+    
+    X = np.array(candidate_probs)
+    max_clusters = min(20, len(X))
+    if max_clusters == 0:
+        default_p = np.ones(n_outcomes) / n_outcomes
+        default_c = 0.0
+        return np.hstack([default_p.reshape(1, -1), np.array([[default_c]])])
+    
+    bic_scores = []
+    gmm_models = []
+    for n in range(1, max_clusters + 1):
+        gmm = GaussianMixture(n_components=n, random_state=42, n_init=20, max_iter=500, tol=1e-10)
+        gmm.fit(X)
+        bic_scores.append(gmm.bic(X))
+        gmm_models.append(gmm)
+    optimal_n = np.argmin(bic_scores) + 1
+    best_gmm = gmm_models[optimal_n - 1]
+    action_centers = best_gmm.means_
+    
+    n_actions = action_centers.shape[0]
+    action_centers = np.clip(action_centers, 0, 1)
+    row_sums = action_centers.sum(axis=1, keepdims=True)
+    action_centers = np.where(row_sums > 0, action_centers / row_sums, 1/n_outcomes)
+    
+    if len(accepted) > 1:
+        kf = KFold(n_splits=min(5, len(accepted)), shuffle=True, random_state=42)
+        bandwidths = np.logspace(-3, 0, 10)
+        best_bandwidth = 0.05
+        best_score = -np.inf
+        for bw in bandwidths:
+            scores = []
+            for train_idx, val_idx in kf.split(accepted):
+                train_accepted = accepted.iloc[train_idx]
+                kde = KernelDensity(kernel='gaussian', bandwidth=bw)
+                kde.fit(action_centers)
+                log_dens = kde.score_samples(action_centers)
+                weights = np.exp(log_dens - np.max(log_dens))
+                weights /= weights.sum()
+                refined_centers = (action_centers * weights[:, np.newaxis])
+                refined_centers = np.clip(refined_centers, 0, 1)
+                row_sums = refined_centers.sum(axis=1, keepdims=True)
+                refined_centers = np.where(row_sums > 0, refined_centers / row_sums, 1/n_outcomes)
+                total_penalty = 0.0
+                for _, row in train_accepted.iterrows():
+                    w_val = np.array(row['Contract'])
+                    u_vals = [np.dot(p, w_val) for p in refined_centers]
+                    max_u = np.max(u_vals)
+                    if max_u < 0:
+                        total_penalty += abs(max_u)
+                scores.append(-total_penalty)
+            avg_score = np.mean(scores)
+            if avg_score > best_score:
+                best_score = avg_score
+                best_bandwidth = bw
+        kde = KernelDensity(kernel='gaussian', bandwidth=best_bandwidth)
+        kde.fit(action_centers)
+        log_dens = kde.score_samples(action_centers)
+        weights = np.exp(log_dens - np.max(log_dens))
+        weights /= weights.sum()
+        action_centers = (action_centers * weights[:, np.newaxis])
+        action_centers = np.clip(action_centers, 0, 1)
+        row_sums = action_centers.sum(axis=1, keepdims=True)
+        action_centers = np.where(row_sums > 0, action_centers / row_sums, 1/n_outcomes)
+    
+    n_actions = action_centers.shape[0]
+    costs = np.zeros(n_actions)
+    
+    for i in range(n_actions):
+        p_i = action_centers[i]
+        min_util = np.inf
+        for _, row in accepted.iterrows():
+            w = np.array(row['Contract'])
+            util = p_i @ w
+            if util < min_util:
+                min_util = util
+        costs[i] = min_util if np.isfinite(min_util) else 0.0
+    
+    for _, row in rejected.iterrows():
+        w = np.array(row['Contract'])
+        for i in range(n_actions):
+            util = action_centers[i] @ w
+            if util >= costs[i]:
+                costs[i] = util + 1e-10
+    
+    for i in range(n_actions):
+        for _, row in accepted.iterrows():
+            w = np.array(row['Contract'])
+            util = action_centers[i] @ w - costs[i]
+            if util < -1e-12:
+                costs[i] = max(0, action_centers[i] @ w - 1e-10)
+    
+    costs = np.clip(costs, 0, None)
+    
+    return np.hstack([action_centers, costs.reshape(-1, 1)])
+```

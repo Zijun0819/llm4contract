@@ -1,0 +1,1 @@
+Use PCA for dimensionality reduction, apply adaptive clustering with elbow method (n_candidates=10, n_init=20), enforce tight IR/IC constraints with slack variables, normalize probabilities post-clustering, ensure strictly positive costs, and leverage LP duality for feasibility and utility maximization.

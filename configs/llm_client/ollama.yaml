@@ -1,0 +1,5 @@
+_target_: utils.llm_clients.ollama.OllamaClient
+
+model: meta-llama/Llama-3.3-70B-Instruct-Turbo # LLM model
+temperature: 0.5  # temperature for chat completion
+api_key: null

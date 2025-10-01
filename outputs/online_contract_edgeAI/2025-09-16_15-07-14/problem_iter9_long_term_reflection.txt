@@ -1,0 +1,1 @@
+Use 100 KMeans clusters, set costs from per-cluster min utility of accepted contracts minus a small epsilon, ensuring agent IC via rejection utility maximums. Enforce strict IR with positive slack.

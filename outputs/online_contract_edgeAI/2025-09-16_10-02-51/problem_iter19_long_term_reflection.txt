@@ -1,0 +1,1 @@
+Tighten cost bounds using all logs, especially rejections. Enforce IR and IC strictly via penalties. Use SLSQP with smart initialization. Simplify clustering (e.g., diagonal covariances) to reduce overfitting and ensure feasibility. Prioritize tighter constraints for reliable convergence.

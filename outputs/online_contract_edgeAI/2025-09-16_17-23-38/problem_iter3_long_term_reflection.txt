@@ -1,0 +1,1 @@
+Use PCA for dimensionality reduction before clustering inferred preferences from accepted contracts via LP. Set tight cost bounds satisfying IR/IC constraints: minimum wages for accepted actions, maximum for rejected. Regularize to avoid degenerate solutions. Validate probability distributions strictly. Add adaptive slack margins for robustness.

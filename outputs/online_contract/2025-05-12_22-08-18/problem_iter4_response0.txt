@@ -1,0 +1,156 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix [p1,...p5,cost] from historical contract logs,
+    satisfying IR and IC constraints.
+
+    Args:
+        v (np.ndarray): Principal's reward vector for 5 outcomes, shape (5,)
+        content (list[dict]): Each dict has keys:
+            'Contract': list of 5 payments,
+            'Principal Utility': float,
+            'Agent Action': int (1 for accept, -1 for reject)
+
+    Returns:
+        np.ndarray: n_actions x 6 matrix, each row = [p1,...p5,cost]
+            where p_i form a probability distribution and cost >= 0.
+    """
+    # Parameters
+    eps = 1e-8
+    max_actions_cap = 10
+    m_outcomes = v.size
+
+    # Parse logs into arrays
+    logs = pd.DataFrame(content)
+    contracts = np.vstack(logs['Contract'].values)  # shape (L,5)
+    agent_actions = logs['Agent Action'].values     # shape (L,)
+    principal_utils = logs['Principal Utility'].values  # shape (L,)
+
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    n_accepted = len(accepted_idx)
+    n_rejected = len(rejected_idx)
+
+    # If no accepted contracts, fallback single uniform action zero cost
+    if n_accepted == 0:
+        p_uniform = np.ones(m_outcomes) / m_outcomes
+        cost = np.array([0.0])
+        return np.hstack([p_uniform.reshape(1, -1), cost.reshape(-1, 1)])
+
+    # Adaptive number of actions (clusters) capped by max_actions_cap and accepted count
+    n_actions = min(max_actions_cap, max(1, n_accepted))
+
+    # Normalize accepted contracts by their sum per contract (avoid scale effects)
+    accepted_contracts = contracts[accepted_idx]
+    sums_ac = accepted_contracts.sum(axis=1, keepdims=True)
+    sums_ac[sums_ac == 0] = 1.0  # avoid division by zero
+    norm_accepted = accepted_contracts / sums_ac
+
+    # Cluster normalized accepted contracts by shape to identify distinct agent actions
+    clustering = AgglomerativeClustering(n_clusters=n_actions, linkage='average')
+    labels = clustering.fit_predict(norm_accepted)
+
+    # Initialize containers for candidate p and cost bounds
+    p_candidates = []
+    cost_lb_accept = []
+
+    # For each cluster, find prototypical outcome distribution p by maximizing p⋅v over simplex
+    for c_idx in range(n_actions):
+        cluster_mask = (labels == c_idx)
+        cluster_inds = accepted_idx[cluster_mask]
+        if cluster_inds.size == 0:
+            # No accepted contracts in cluster (rare), fallback uniform p
+            p_candidates.append(np.ones(m_outcomes) / m_outcomes)
+            cost_lb_accept.append(0.0)
+            continue
+
+        cluster_contracts = contracts[cluster_inds]
+
+        # LP to maximize p · v s.t p in simplex
+        c_obj = -v  # negative to maximize p·v
+        A_eq = np.ones((1, m_outcomes))
+        b_eq = np.array([1.0])
+        bounds = [(0.0, 1.0)] * m_outcomes
+
+        res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+
+        if res.success:
+            p = res.x
+        else:
+            # fallback: average normalized contracts in cluster
+            avg_w = cluster_contracts.mean(axis=0)
+            avg_w = np.clip(avg_w, 0, None)
+            s = avg_w.sum()
+            p = avg_w / s if s > 0 else np.ones(m_outcomes) / m_outcomes
+
+        p_candidates.append(p)
+
+        # Cost lower bound from IR: cost_a <= min_i p @ w_i (acceptance margin >=0)
+        p_w_cluster = cluster_contracts @ p
+        min_cost = np.min(p_w_cluster)
+        cost_lb_accept.append(max(min_cost, 0.0))
+
+    p_candidates = np.array(p_candidates)
+    cost_lb_accept = np.array(cost_lb_accept)
+
+    # Enforce rejection constraints: cost_a > max_r p_a @ w_r for all rejected contracts r
+    if n_rejected > 0:
+        rejected_contracts = contracts[rejected_idx]  # shape (n_rejected, m_outcomes)
+        # Compute matrix p_candidates @ rejected_contracts.T shape (n_actions, n_rejected)
+        p_w_rejected = p_candidates @ rejected_contracts.T
+        cost_lb_reject = np.maximum(p_w_rejected.max(axis=1), 0.0)
+    else:
+        cost_lb_reject = np.zeros_like(cost_lb_accept)
+
+    # Costs must satisfy both IR and IC constraints
+    costs = np.maximum(cost_lb_accept, cost_lb_reject)
+
+    # Validate accepted contracts are explained by some action (p, cost)
+    def explained_by_some_action(w):
+        margin = p_candidates @ w - costs
+        return np.any(margin >= -eps)
+
+    # Add new actions for accepted contracts not explained by existing actions
+    added_new_action = False
+    for idx in accepted_idx:
+        w = contracts[idx]
+        if not explained_by_some_action(w):
+            # New action p proportional to w normalized, cost equal to acceptance margin
+            w_sum = w.sum()
+            if w_sum > 0:
+                p_new = w / w_sum
+            else:
+                p_new = np.ones(m_outcomes) / m_outcomes
+            cost_new = p_new @ w
+            p_candidates = np.vstack([p_candidates, p_new])
+            costs = np.append(costs, cost_new)
+            added_new_action = True
+
+    # If new actions added, re-enforce rejection constraints on them
+    if added_new_action and n_rejected > 0:
+        p_w_rejected = p_candidates @ rejected_contracts.T
+        for a in range(len(p_candidates)):
+            max_rej = p_w_rejected[a].max()
+            if costs[a] < max_rej:
+                costs[a] = max_rej + 1e-8  # small epsilon margin
+
+    # Normalize all p_candidates rows strictly to simplex (correct numerical errors)
+    p_candidates = np.clip(p_candidates, 0, None)
+    row_sums = p_candidates.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0  # avoid div by zero
+    p_candidates /= row_sums
+
+    # Ensure costs non-negative
+    costs = np.maximum(costs, 0.0)
+
+    # Compose agent setting matrix: n_actions x 6 (5 p_i + 1 cost)
+    agent_setting = np.hstack([p_candidates, costs[:, None]])
+
+    return agent_setting
+```

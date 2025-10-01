@@ -1,0 +1,1 @@
+Refine GMM with 500+ clusters, enforce stricter IR via epsilon-tight bounds. Align costs with minimal utilities from logs, normalize probabilities robustly. Merge similar clusters to reduce redundancy and ensure IC compliance. Prioritize numerical stability.

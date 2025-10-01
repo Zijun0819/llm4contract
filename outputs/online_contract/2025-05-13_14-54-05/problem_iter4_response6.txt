@@ -1,0 +1,160 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.cluster import DBSCAN
+from sklearn.neighbors import NearestNeighbors
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions x [probabilities over 5 outcomes + cost])
+    that explains all historical interactions under IR and IC constraints.
+
+    Args:
+        v: np.ndarray of shape (5,), principal's reward vector for 5 outcomes.
+        content: list of dicts, each with keys 'Contract' (list of 5 float payments),
+                 'Principal Utility' (float), and 'Agent Action' (1 or -1).
+
+    Returns:
+        np.ndarray of shape (n_actions, 6), rows are [p1,...,p5,cost]
+    """
+    m = v.shape[0]
+    L = len(content)
+
+    # Separate accepted and rejected logs
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+
+    # If no accepted logs, return trivial uniform distribution with zero cost (agent always rejects)
+    if not accepted_logs:
+        p_uniform = np.ones(m) / m
+        return np.array([np.append(p_uniform, 0.0)])
+
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])  # (N_acc, 5)
+
+    # Normalize accepted contracts to unit vectors (direction only)
+    norms = np.linalg.norm(accepted_contracts, axis=1, keepdims=True)
+    norms[norms < 1e-12] = 1.0
+    accepted_dirs = accepted_contracts / norms
+
+    # Compute cosine distance matrix (1 - cosine similarity)
+    cosine_dist_matrix = 1 - np.clip(accepted_dirs @ accepted_dirs.T, -1, 1)
+
+    # Determine epsilon for DBSCAN via k-distance heuristic
+    k = 5
+    nbrs = NearestNeighbors(n_neighbors=k).fit(accepted_dirs)
+    distances, _ = nbrs.kneighbors(accepted_dirs)
+    k_distances = np.sort(distances[:, -1])
+    eps = np.median(k_distances)
+    eps = max(0.01, min(eps, 0.1))
+
+    clustering = DBSCAN(eps=eps, min_samples=k, metric='precomputed')
+    labels = clustering.fit_predict(cosine_dist_matrix)
+
+    # Handle all noise case (-1)
+    if np.all(labels == -1):
+        labels = np.zeros(len(accepted_contracts), dtype=int)
+
+    unique_labels = set(labels)
+    if -1 in unique_labels:
+        noise_indices = np.where(labels == -1)[0]
+        max_label = max(l for l in unique_labels if l != -1) if unique_labels - {-1} else -1
+        for i, idx in enumerate(noise_indices):
+            labels[idx] = max_label + 1 + i
+        unique_labels = set(labels)
+
+    n_actions = len(unique_labels)
+    centers = np.zeros((n_actions, m))
+    for i, lab in enumerate(sorted(unique_labels)):
+        members = accepted_contracts[labels == lab]
+        if len(members) == 0:
+            centers[i] = np.ones(m) / m
+        else:
+            centers[i] = np.mean(members, axis=0)
+
+    # Infer outcome distributions p for each action by normalizing centers (nonnegative)
+    ps = []
+    for i in range(n_actions):
+        w = centers[i]
+        w_pos = np.maximum(w, 0)
+        s = w_pos.sum()
+        if s < 1e-12:
+            p_i = np.ones(m) / m
+        else:
+            p_i = w_pos / s
+        ps.append(p_i)
+    ps = np.array(ps)  # (n_actions, 5)
+
+    # Cosine similarity helper
+    def cosine_similarity(u, v):
+        u_norm = np.linalg.norm(u)
+        v_norm = np.linalg.norm(v)
+        if u_norm < 1e-12 or v_norm < 1e-12:
+            return 0.0
+        return np.dot(u, v) / (u_norm * v_norm)
+
+    accepted_assignments = []
+    for w in accepted_contracts:
+        sims = [cosine_similarity(w, p_i) for p_i in ps]
+        assigned = int(np.argmax(sims))
+        accepted_assignments.append(assigned)
+    accepted_assignments = np.array(accepted_assignments)
+
+    # Prepare LP constraints for costs c_a >= 0
+    # For accepted logs assigned to action a: c_a <= p_a @ w
+    # For rejected logs: for all a: c_a >= p_a @ w + eps
+
+    eps = 1e-5
+    A_ub = []
+    b_ub = []
+
+    # Accepted constraints: c_a <= p_a @ w  => -c_a >= -p_a @ w
+    for idx, w in enumerate(accepted_contracts):
+        a = accepted_assignments[idx]
+        row = np.zeros(n_actions)
+        row[a] = -1
+        A_ub.append(row)
+        b_ub.append(-np.dot(ps[a], w))
+
+    # Rejected constraints: c_a >= p_a @ w + eps => -c_a <= -p_a @ w - eps
+    if rejected_logs:
+        rejected_contracts = np.array([log['Contract'] for log in rejected_logs])
+        for w in rejected_contracts:
+            for a in range(n_actions):
+                row = np.zeros(n_actions)
+                row[a] = -1
+                A_ub.append(row)
+                b_ub.append(-np.dot(ps[a], w) - eps)
+    else:
+        rejected_contracts = np.empty((0, m))
+
+    A_ub = np.array(A_ub)
+    b_ub = np.array(b_ub)
+
+    c_obj = np.ones(n_actions)
+    bounds = [(0, None) for _ in range(n_actions)]
+
+    res = linprog(c=c_obj, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+
+    if res.success:
+        costs = res.x
+    else:
+        # Fallback: minimal costs from accepted logs
+        costs = np.zeros(n_actions)
+        for a in range(n_actions):
+            assigned_idx = np.where(accepted_assignments == a)[0]
+            if assigned_idx.size > 0:
+                pay_ins = np.array([np.dot(ps[a], accepted_contracts[i]) for i in assigned_idx])
+                costs[a] = pay_ins.min()
+            else:
+                costs[a] = 0.0
+        # Increase costs to satisfy rejection constraints if any
+        if rejected_logs:
+            rej_pay = np.array([[np.dot(ps[a], w) for w in rejected_contracts] for a in range(n_actions)])
+            cost_rej_min = rej_pay.max(axis=1) + eps
+            costs = np.maximum(costs, cost_rej_min)
+
+    costs = np.maximum(costs, 0)
+
+    agent_setting = np.hstack([ps, costs.reshape(-1, 1)])
+    return agent_setting
+```

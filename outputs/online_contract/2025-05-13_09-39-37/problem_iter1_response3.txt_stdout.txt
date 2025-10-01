@@ -1,0 +1,17 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 153, in <module>
+    obj = evaluate_llm((_p, _c, _v, _contract_logs))
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 105, in evaluate_llm
+    _, inferred_contract = contract_oracle_solver(inferred_p, inferred_c, v)
+  File "E:\Coding\pythonProject\llm4contract\problems\eval.py", line 58, in contract_oracle_solver
+    res = linprog(
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog.py", line 649, in linprog
+    lp, solver_options = _parse_linprog(lp, options, meth)
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_util.py", line 1026, in _parse_linprog
+    lp = _clean_inputs(lp._replace(A_ub=A_ub, A_eq=A_eq))
+  File "D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_util.py", line 345, in _clean_inputs
+    raise ValueError(
+ValueError: Invalid input for linprog: b_ub must not contain values inf, nan, or None

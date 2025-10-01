@@ -1,0 +1,67 @@
+```python
+import numpy as np
+from scipy.optimize import Bounds, LinearConstraint, minimize
+from sklearn.cluster import KMeans
+
+def agent_solver(v, content):
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    if not accepted_logs:
+        return np.array([[1/len(v)] * len(v) + [0]])
+        
+    contracts = np.array([log['Contract'] for log in content])
+    utilities = np.array([log['Principal Utility'] for log in content])
+    actions = np.array([log['Agent Action'] for log in content])
+    
+    n_outcomes = len(v)
+    n_candidates = min(10, len(accepted_logs))
+    
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])
+    acceptance_utilities = np.array([log['Principal Utility'] for log in accepted_logs])
+    
+    inferred_ps = []
+    for contract, util in zip(accepted_contracts, acceptance_utilities):
+        def constraint_equality(x):
+            return [x.sum() - 1.0, np.dot(v - np.array(contract), x) - util]
+        
+        constraints = {
+            'type': 'eq',
+            'fun': constraint_equality
+        }
+        res = minimize(
+            lambda x: -np.dot(contract, x),
+            x0=np.ones(n_outcomes)/n_outcomes,
+            bounds=Bounds(0, 1),
+            constraints=constraints,
+            method='SLSQP'
+        )
+        if res.success:
+            inferred_ps.append(res.x)
+    
+    if not inferred_ps:
+        return np.array([[1/n_outcomes]*n_outcomes + [0]])
+    
+    kmeans = KMeans(n_clusters=n_candidates, n_init=10).fit(inferred_ps)
+    action_distributions = kmeans.cluster_centers_
+    
+    action_costs = []
+    for j in range(n_candidates):
+        p_j = action_distributions[j]
+        
+        accepted_idx = [i for i, log in enumerate(content) 
+                      if log['Agent Action'] == 1 and 
+                      np.argmax([np.dot(p_k, log['Contract']) for p_k in action_distributions]) == j]
+        
+        if not accepted_idx:
+            base_cost = 0
+        else:
+            base_cost = min([np.dot(p_j, contracts[i]) for i in accepted_idx])
+        
+        rejected_idx = [i for i, log in enumerate(content) if log['Agent Action'] == -1]
+        if rejected_idx:
+            rej_bonus = max([np.dot(p_j, contracts[i]) for i in rejected_idx], default=0)
+            base_cost = max(base_cost, rej_bonus)
+        
+        action_costs.append(base_cost)
+    
+    return np.hstack([action_distributions, np.array(action_costs).reshape(-1, 1)])
+```

@@ -1,0 +1,10 @@
+Use IC constraints for action selection consistency; optimize costs using trust-constr method.
+Refine cluster count dynamically; ensure cost bounds tight for strict IC/IR compliance.
+Use more precise IC constraints with pairwise comparisons and refine cost bounds with epsilon.
+Use tighter cost bounds and refined penalty weights to ensure IC and IR constraints.
+Check rejected contracts to tighten cost bounds. Use penalty weights in objective.
+Simplify constraints, ensure feasible costs, and minimize IC violations.
+Use more initial guesses in GMM clustering, and ensure cost constraints are correctly enforced with inequality.
+Use probabilistic clustering, tighten IR/IC constraints, and optimize for minimal violation.
+Use better cost bounds and penalty scaling to enforce constraints more strictly.
+Use more outcomes per action, refine cost bounds, and add penalty weighting.

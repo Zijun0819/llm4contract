@@ -1,0 +1,68 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    n_candidates = 12
+    m_outcomes = v.shape[0]
+    L = len(content)
+    contracts = np.array(content['Contract'].tolist())
+    principal_utilities = np.array(content['Principal Utility'].tolist())
+    agent_actions = np.array(content['Agent Action'].tolist())
+    
+    def infer_p(w, u):
+        c = -w
+        A_eq = np.vstack([np.ones(m_outcomes), v - w])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1) for _ in range(m_outcomes)]
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs-ds')
+        return res.x if res.success else None
+
+    accepted_indices = np.where(agent_actions == 1)[0]
+    accepted_p = []
+    for idx in accepted_indices:
+        w_i = contracts[idx]
+        u_i = principal_utilities[idx]
+        p_i = infer_p(w_i, u_i)
+        if p_i is not None:
+            accepted_p.append(p_i)
+    
+    if not accepted_p:
+        raise ValueError("No valid accepted logs.")
+    
+    all_p = np.array(accepted_p)
+    kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=20).fit(all_p)
+    cluster_centers = kmeans.cluster_centers_
+
+    def compute_utility_deviation(action_idx, p, w):
+        return np.dot(p[action_idx], w)
+    
+    assignments = np.zeros(L, dtype=int)
+    for i in range(L):
+        if agent_actions[i] == 1:
+            w_current = contracts[i]
+            utilities = [np.dot(center, w_current) for center in cluster_centers]
+            assignments[i] = np.argmax(utilities)
+        else:
+            assignments[i] = -1
+
+    c_init = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        relevant_contracts = contracts[(assignments == a) & (agent_actions == 1)]
+        if len(relevant_contracts) > 0:
+            min_utility = min(np.dot(cluster_centers[a], w) for w in relevant_contracts)
+            c_init[a] = min_utility
+    
+    rejected_contracts = contracts[agent_actions == -1]
+    if len(rejected_contracts) > 0:
+        for a in range(n_candidates):
+            max_rej_util = max(np.dot(cluster_centers[a], w) for w in rejected_contracts)
+            if max_rej_util > c_init[a]:
+                c_init[a] = max_rej_util
+
+    agent_setting = np.hstack([cluster_centers, c_init[:, np.newaxis]])
+    return agent_setting
+```

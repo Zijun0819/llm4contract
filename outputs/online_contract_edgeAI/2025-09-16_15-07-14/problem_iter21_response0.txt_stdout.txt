@@ -1,0 +1,60 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_01.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.7021 seconds
+→ Best principal utility: 0.00046806723472694596
+→ The corresponding best action is: 11
+→ The corresponding agent utility is: 9.993633524885137e-17
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.000578617350086223
+→ The corresponding best action is: 3
+→ The corresponding agent utility is: 2.985704433386718e-05
+→ The principal utility gap is: 0.0006193891649213826-0.000578617350086223=4.077181483515952e-05
+→ Agent and principal score:    0 4.077181483515952e-05
+[*] Instance 0: 4.077181483515952e-05
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_02.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.1167 seconds
+→ Best principal utility: 0.00046623557164819364
+→ The corresponding best action is: 2
+→ The corresponding agent utility is: 9.999054535747565e-17
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0006017856526989253
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.7603512222557258e-05
+→ The principal utility gap is: 0.0006193891649213826-0.0006017856526989253=1.7603512222457308e-05
+→ Agent and principal score:    0 1.7603512222457308e-05
+[*] Instance 1: 1.7603512222457308e-05
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\dataset\train_03.pkl with 3 instances.
+→ Best principal utility: 0.0006193891649213826
+→ The corresponding best action is: 6
+→ The corresponding agent utility is: 1.000007097528427e-16
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\sklearn\cluster\_kmeans.py:1419: UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1.
+  warnings.warn(
+The running time is：0.1224 seconds
+→ Best principal utility: 0.000480530009043313
+→ The corresponding best action is: 1
+→ The corresponding agent utility is: 9.999054535747565e-17
+→ The oracle principal utility:    0.0006193891649213826
+→ Inferred principal utility:    0.0001757511224683438
+→ The corresponding best action is: 0
+→ The corresponding agent utility is: 0.00023689635462533946
+→ The principal utility gap is: 0.0006193891649213826-0.0001757511224683438=0.0004436380424530388
+→ Agent and principal score:    0 0.0004436380424530388
+[*] Instance 2: 0.0004436380424530388
+[*] Average:
+0.0001673377898368852

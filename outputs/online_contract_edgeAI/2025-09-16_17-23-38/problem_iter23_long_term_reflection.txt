@@ -1,0 +1,1 @@
+Use ultra-tight slack (1e-15), stabilize PCA with sufficient data, apply robust KMeans (n_init=20+), enforce strictly positive wage-based costs, and refine action assignment via utility thresholds. Normalize probabilities tightly and leverage rejections to strengthen IC feasibility.

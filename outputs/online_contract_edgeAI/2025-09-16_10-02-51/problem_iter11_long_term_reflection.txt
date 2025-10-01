@@ -1,0 +1,1 @@
+Initialize costs at lower bounds + ε. Tighten IR constraints with true utility penalties. Simplify objective, enforce strict IC via linear optimization with high iteration tolerance. Refine cluster counts; use GMM with 'diag' covariance. Ensure minimal penalty weights and validate probabilities.

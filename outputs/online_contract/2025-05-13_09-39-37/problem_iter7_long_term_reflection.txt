@@ -1,0 +1,1 @@
+Prioritize hierarchical clustering with cosine similarity for stable action grouping; iteratively refine costs enforcing strict IR and IC margins; incorporate rejected logs’ utility constraints carefully; adjust costs in small steps ensuring positive agent utility and probability normalization; avoid proxy distributions from rejects.

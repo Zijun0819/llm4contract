@@ -1,0 +1,107 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, minimize, Bounds
+from sklearn.mixture import BayesianGaussianMixture
+from sklearn.preprocessing import StandardScaler
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = len(v)
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        uniform_p = np.ones(n_outcomes) / n_outcomes
+        min_cost = 0.0
+        if rejected_logs:
+            rej_contracts = np.array([log['Contract'] for log in rejected_logs])
+            uniform_utils = rej_contracts @ uniform_p
+            min_cost = np.max(uniform_utils) + 1e-8 if np.any(uniform_utils >= 0) else 0.0
+        return np.hstack([uniform_p.reshape(1, -1), np.array([[min_cost]])])
+    
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])
+    accepted_utils = np.array([log['Principal Utility'] for log in accepted_logs])
+    
+    inferred_probs = []
+    for i in range(len(accepted_logs)):
+        w = accepted_contracts[i]
+        u_target = accepted_utils[i]
+        if u_target <= 0:
+            continue
+        res = linprog(-w, A_eq=[np.ones(n_outcomes), v], b_eq=[1, u_target], bounds=[(0, 1)] * n_outcomes, method='highs')
+        if res.success:
+            inferred_probs.append(res.x)
+    
+    if not inferred_probs:
+        uniform_p = np.ones(n_outcomes) / n_outcomes
+        min_util = np.min(accepted_contracts @ uniform_p) if len(accepted_contracts) > 0 else 0.0
+        min_cost = min_util
+        if rejected_logs:
+            rej_contracts = np.array([log['Contract'] for log in rejected_logs])
+            uniform_utils = rej_contracts @ uniform_p
+            min_cost = max(min_cost, np.max(uniform_utils) + 1e-8) if np.any(uniform_utils >= min_cost) else min_cost
+        return np.hstack([uniform_p.reshape(1, -1), np.array([[min_cost]])])
+    
+    prob_matrix = np.array(inferred_probs)
+    scaler = StandardScaler()
+    scaled_probs = scaler.fit_transform(prob_matrix)
+    
+    n_candidates = min(12, len(inferred_probs))
+    gmm = BayesianGaussianMixture(n_components=n_candidates, random_state=42, max_iter=1000)
+    gmm.fit(scaled_probs)
+    centroids = scaler.inverse_transform(gmm.means_)
+    centroids = np.clip(centroids, 0, 1)
+    row_sums = centroids.sum(axis=1, keepdims=True)
+    centroids = centroids / row_sums
+    n_actions = centroids.shape[0]
+    
+    cost_lb = np.zeros(n_actions)
+    for a in range(n_actions):
+        p_a = centroids[a]
+        min_util = np.inf
+        for w in accepted_contracts:
+            util = p_a @ w
+            if util >= 0:
+                min_util = min(min_util, util)
+        cost_lb[a] = min_util if min_util != np.inf else 0.0
+    
+    if rejected_logs:
+        rej_contracts = np.array([log['Contract'] for log in rejected_logs])
+        for a in range(n_actions):
+            p_a = centroids[a]
+            for w in rej_contracts:
+                util = p_a @ w
+                if util >= cost_lb[a]:
+                    cost_lb[a] = util + 1e-8
+    
+    def objective(costs):
+        penalty = 0.0
+        for log in content:
+            w = np.array(log['Contract'])
+            utils = np.array([centroids[a] @ w - costs[a] for a in range(n_actions)])
+            max_util = np.max(utils)
+            best_action = np.argmax(utils)
+            if log['Agent Action'] == 1:
+                if max_util < 0:
+                    penalty += 10.0 * (-max_util)
+                for a in range(n_actions):
+                    if a != best_action and utils[a] > utils[best_action] - 1e-8:
+                        penalty += 1.0 * (utils[a] - utils[best_action] + 1e-8)
+            else:
+                if max_util >= 0:
+                    penalty += 5.0 * max_util
+        reg = 0.01 * np.sum(np.abs(costs - cost_lb))
+        return penalty + reg
+    
+    bounds = Bounds(cost_lb, np.inf)
+    constraints = [{'type': 'ineq', 'fun': lambda x: x - cost_lb}]
+    initial_guess = cost_lb + 1e-6
+    res = minimize(objective, initial_guess, method='SLSQP', bounds=bounds, constraints=constraints, options={'maxiter': 2000, 'ftol': 1e-8})
+    
+    final_costs = res.x if res.success else initial_guess
+    final_costs = np.maximum(final_costs, 0)
+    
+    return np.hstack([centroids, final_costs.reshape(-1, 1)])
+```

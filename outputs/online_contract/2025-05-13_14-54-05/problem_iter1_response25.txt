@@ -1,0 +1,208 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import AgglomerativeClustering
+
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting (actions) consistent with historical logs of contracts,
+    principal utilities, and agent actions (accept/reject).
+
+    Args:
+        v (np.ndarray): Principal's reward vector for 5 outcomes, shape (5,)
+        content (pd.DataFrame): Historical logs with columns:
+            'Contract': list of 5 payments,
+            'Principal Utility': float,
+            'Agent Action': 1 (accept) or -1 (reject).
+
+    Returns:
+        np.ndarray: n x 6 matrix, each row an agent action:
+            first 5 cols = outcome probabilities (sum to 1),
+            last col = non-negative cost.
+    """
+    m = v.size
+    logs = content.copy()
+    L = len(logs)
+
+    # Extract arrays
+    contracts = np.vstack(logs['Contract'].to_numpy())
+    principal_utils = logs['Principal Utility'].to_numpy()
+    agent_actions = logs['Agent Action'].to_numpy()
+
+    # Step 0: basic checks
+    assert contracts.shape[1] == m
+
+    # Step 1: collect accepted contracts and their expected utilities for the agent
+    # For accepted contracts:
+    # agent expected utility = p @ w - c >= 0
+    # principal utility = v @ p - w @ p = given
+    # We do not know p or c; want to infer p and c.
+
+    # Idea:
+    # 1) Cluster accepted contracts' payment vectors to hypothesize actions' outcome distributions p.
+    # 2) For each cluster (action), find cost c such that agent IR holds for accepted contracts assigned to it,
+    #    and IC holds vs other actions.
+    # 3) Check rejection logs for IR consistency: rejected contracts should yield strictly negative agent utility
+    #    for all actions.
+
+    # Step 2: Filter accepted contracts
+    accepted_idx = np.where(agent_actions == 1)[0]
+    rejected_idx = np.where(agent_actions == -1)[0]
+
+    accepted_wages = contracts[accepted_idx]
+
+    # Use AgglomerativeClustering to adaptively find number of clusters.
+    # We try cluster numbers from 2 to min(10, #accepted)
+    max_clusters = min(10, len(accepted_idx))
+    if max_clusters < 2:
+        max_clusters = 2
+
+    best_setting = None
+    best_error = np.inf
+
+    # Normalize contracts for clustering (scale each vector to unit sum)
+    norm_contracts = accepted_wages / (accepted_wages.sum(axis=1, keepdims=True) + 1e-12)
+
+    for n_clusters in range(2, max_clusters + 1):
+        try:
+            clusterer = AgglomerativeClustering(n_clusters=n_clusters)
+            labels = clusterer.fit_predict(norm_contracts)
+
+            # Step 3: For each cluster, estimate p (average normalized contract) and c (cost)
+            p_candidates = np.zeros((n_clusters, m))
+            c_candidates = np.zeros(n_clusters)
+
+            for k in range(n_clusters):
+                cluster_indices = accepted_idx[labels == k]
+                if len(cluster_indices) == 0:
+                    # Empty cluster, skip
+                    continue
+                cluster_contracts = contracts[cluster_indices]
+
+                # Estimate p as normalized average contract payments weighted by v
+                # Since principal utility = v @ p - w @ p,
+                # Given w and principal utils ~ v @ p - w @ p => p unknown, approximate by normalized wage
+                # We approximate p by normalized average wage over cluster contracts,
+                # then refine p by solving LP to satisfy v @ p = principal util + w @ p on average.
+
+                avg_w = cluster_contracts.mean(axis=0)
+                # Start from normalized avg_w as initial p guess
+                p_init = avg_w / (avg_w.sum() + 1e-12)
+
+                # Refine p by solving LP:
+                # maximize 0 (feasibility)
+                # s.t. sum(p) = 1, p >= 0
+                # For each contract i in cluster:
+                # principal_util_i + w_i @ p = v @ p
+                # => (v - w_i) @ p = principal_util_i
+                # We relax equalities to approximation via min-max constraints
+
+                # Construct constraints matrix and bounds:
+                # For numerical stability, solve min/max of (v - w_i) @ p and check if principal_util_i within bounds
+                A_eq = np.ones((1, m))
+                b_eq = np.array([1.0])
+
+                # Form inequalities for each contract i:
+                # (v - w_i) @ p >= principal_util_i - eps
+                # (v - w_i) @ p <= principal_util_i + eps
+                eps = 1e-4
+                A_ub = []
+                b_ub = []
+
+                for i in range(cluster_contracts.shape[0]):
+                    diff = v - cluster_contracts[i]
+                    pu = principal_utils[cluster_indices[i]]
+                    # (v - w_i) @ p >= pu - eps  =>  - (v - w_i) @ p <= - (pu - eps)
+                    A_ub.append(-diff)
+                    b_ub.append(-(pu - eps))
+                    # (v - w_i) @ p <= pu + eps
+                    A_ub.append(diff)
+                    b_ub.append(pu + eps)
+
+                bounds = [(0, 1)] * m
+
+                res = linprog(c=np.zeros(m), A_ub=np.array(A_ub), b_ub=np.array(b_ub),
+                              A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+
+                if res.success:
+                    p_candidates[k] = res.x
+                else:
+                    # fallback to normalized avg_w
+                    p_candidates[k] = p_init
+
+                # Step 4: estimate cost c_k for action k
+                # Agent utility for accepted contracts: p_k @ w_i - c_k >= 0
+                # => c_k <= p_k @ w_i for all i in cluster
+                # We pick cost to be max lower bound to keep IR tight:
+                costs_ub = p_candidates[k] @ cluster_contracts.T
+                c_candidates[k] = costs_ub.min()
+
+            # Step 5: Check IR and IC constraints for accepted contracts
+            # IR: for each accepted contract assigned to cluster k:
+            # p_k @ w_i - c_k >= 0
+            irr_violations = 0
+            for i, idx_i in enumerate(accepted_idx):
+                k = labels[i]
+                util = p_candidates[k] @ contracts[idx_i] - c_candidates[k]
+                if util < -1e-8:
+                    irr_violations += 1
+
+            # Step 6: Check rejection consistency
+            # For each rejected contract j:
+            # For all k, p_k @ w_j - c_k < 0 (strict rejection)
+            rej_violations = 0
+            for idx_j in rejected_idx:
+                wj = contracts[idx_j]
+                utils = p_candidates @ wj - c_candidates
+                if np.any(utils >= -1e-8):
+                    rej_violations += 1
+
+            # Step 7: Check IC constraints approx
+            # For each accepted contract i in cluster k:
+            # p_k @ w_i - c_k >= p_l @ w_i - c_l for all l != k
+            ic_violations = 0
+            for i, idx_i in enumerate(accepted_idx):
+                k = labels[i]
+                wi = contracts[idx_i]
+                left = p_candidates[k] @ wi - c_candidates[k]
+                for l in range(n_clusters):
+                    if l == k:
+                        continue
+                    right = p_candidates[l] @ wi - c_candidates[l]
+                    if left + 1e-8 < right:
+                        ic_violations += 1
+
+            total_violations = irr_violations + rej_violations + ic_violations
+
+            # Step 8: Select best cluster number with minimal violations and cost penalty
+            cost_sum = c_candidates.sum()
+            penalty = 1e3 * total_violations + cost_sum
+
+            if penalty < best_error:
+                best_error = penalty
+                best_setting = (p_candidates.copy(), c_candidates.copy())
+
+            # Early stop if perfect fit
+            if total_violations == 0:
+                break
+
+        except Exception:
+            continue
+
+    if best_setting is None:
+        # fallback: uniform distribution with zero cost single action
+        p_uniform = np.ones((1, m)) / m
+        c_zero = np.array([0.0])
+        return np.hstack([p_uniform, c_zero[:, np.newaxis]])
+
+    p_final, c_final = best_setting
+    # Ensure costs non-negative
+    c_final = np.clip(c_final, 0, None)
+
+    # Normalize p_final rows to sum to 1 robustly
+    p_norm = p_final / (p_final.sum(axis=1, keepdims=True) + 1e-12)
+
+    return np.hstack([p_norm, c_final[:, np.newaxis]])
+```

@@ -1,0 +1,10 @@
+Use LP to fit outcome distributions per accepted contract; cluster these for actions; enforce IR/IC via cost bounds.
+Use adaptive clustering on raw contracts; enforce stricter IC margins; normalize probabilities post cost adjustment; prefer agglomerative clustering.
+Use tighter IC constraints, Euclidean clustering, and multi-action IC inequalities to refine costs and improve agent model.
+Cluster on outcome distributions, not payments; enforce stricter IR/IC margins; adaptively select actions via utility consistency.
+Use adaptive clustering with tight radius thresholds and explicitly enforce IR and IC constraints via cost adjustments.
+Use LP for IC constraints; cluster on outcome distributions, not contracts; enforce strict rejection margins; normalize probabilities carefully.
+Use adaptive clustering with tighter radius thresholds and prioritize cost feasibility under IR and IC constraints.
+Use adaptive clustering (DBSCAN), iterative cost refinement, and reject strict LP for robust IR and IC satisfaction.
+Incorporate rejected logs in cost updates; adapt cluster count from 1; normalize centers robustly; enforce strict IC constraints.
+Use weighted clustering with principal rewards; enforce full IR, IC, rejection constraints via LP; normalize probabilities robustly.

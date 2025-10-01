@@ -1,0 +1,138 @@
+```python
+import numpy as np
+from scipy.optimize import linprog, minimize, Bounds
+from sklearn.cluster import KMeans, DBSCAN
+from sklearn.preprocessing import StandardScaler
+from sklearn.mixture import GaussianMixture
+
+def agent_solver(v, content):
+    n_possible = 12
+    outcomes = v.shape[0]
+    logs = content
+    accept_logs = [log for log in logs if log['Agent Action'] == 1]
+    
+    if not accept_logs:
+        return np.zeros((1, outcomes + 1))
+    
+    def solve_p_utility(w, u):
+        res = linprog(-w, A_eq=np.vstack([np.ones(outcomes), v - w]), b_eq=[1, u], bounds=[(0, 1)] * outcomes)
+        return res.x if res.success else None
+
+    candidate_ps = []
+    for log in accept_logs:
+        p_candidate = solve_p_utility(log['Contract'], log['Principal Utility'])
+        if p_candidate is not None:
+            candidate_ps.append(p_candidate)
+    
+    if not candidate_ps:
+        return np.zeros((1, outcomes + 1))
+    
+    candidate_ps = np.array(candidate_ps)
+    
+    best_silhouette = -np.inf
+    best_gmm = None
+    k_range = range(2, min(11, len(candidate_ps) + 1))
+    for k in k_range:
+        try:
+            gmm = GaussianMixture(n_components=k, random_state=0, n_init=5)
+            labels = gmm.fit_predict(candidate_ps)
+            weights = gmm.weights_
+            centers = gmm.means_
+            within_cluster = np.zeros(k)
+            for i in range(k):
+                mask = labels == i
+                if np.sum(mask) > 1:
+                    within_cluster[i] = np.mean(np.sum((candidate_ps[mask] - centers[i])**2, axis=1))
+                else:
+                    within_cluster[i] = 0
+            inter_cluster = np.zeros(k)
+            for i in range(k):
+                other_centers = np.vstack([centers[j] for j in range(k) if j != i])
+                inter_nearest = np.min(np.sum((centers[i] - other_centers)**2, axis=1))
+                inter_cluster[i] = inter_nearest
+            silhouette_scores = (inter_cluster - within_cluster) / np.maximum(inter_cluster, within_cluster)
+            silhouette = np.average(silhouette_scores, weights=weights)
+            if silhouette > best_silhouette:
+                best_silhouette = silhouette
+                best_gmm = gmm
+        except:
+            continue
+    
+    n_components = len(best_gmm.means_) if best_gmm is not None else min(5, len(candidate_ps))
+    if best_gmm is None:
+        gmm = GaussianMixture(n_components=n_components, random_state=0, n_init=5)
+        gmm.fit(candidate_ps)
+        p0 = gmm.means_
+    else:
+        p0 = best_gmm.means_
+    
+    assign_accepted = {}
+    for i, log in enumerate(accept_logs):
+        w = log['Contract']
+        utilities = p0 @ w
+        best_action = np.argmax(utilities)
+        if best_action not in assign_accepted:
+            assign_accepted[best_action] = []
+        assign_accepted[best_action].append(w)
+    
+    cost_estimates = np.zeros(n_components)
+    for a in range(n_components):
+        if a in assign_accepted and assign_accepted[a]:
+            wages_a = np.array(assign_accepted[a]).T
+            cost_estimates[a] = np.min(p0[a] @ wages_a)
+        else:
+            cost_estimates[a] = 0
+    
+    rej_logs = [log for log in logs if log['Agent Action'] == -1]
+    rej_wages = np.array([log['Contract'] for log in rej_logs]).T if rej_logs else None
+    if rej_wages is not None:
+        for a in range(n_components):
+            expected_utility = p0[a] @ rej_wages
+            max_utility = np.max(expected_utility)
+            if max_utility > cost_estimates[a]:
+                cost_estimates[a] = max_utility
+    
+    def check_consistency(agent_setting):
+        p_mat = agent_setting[:, :-1]
+        c_vec = agent_setting[:, -1]
+        consistent = True
+        for log in logs:
+            w = log['Contract']
+            action = log['Agent Action']
+            utilities = p_mat @ w - c_vec
+            max_utility = np.max(utilities)
+            if (action == 1 and max_utility < 0) or (action == -1 and max_utility >= 0):
+                consistent = False
+                break
+        return consistent
+    
+    current_setting = np.hstack([p0, cost_estimates.reshape(-1, 1)])
+    if check_consistency(current_setting):
+        return current_setting
+    
+    def adjust_costs(costs):
+        agent_setting = np.hstack([p0, costs.reshape(-1, 1)])
+        violation = 0
+        for log in logs:
+            w = log['Contract']
+            action = log['Agent Action']
+            utilities = p0 @ w - costs
+            max_utility = np.max(utilities)
+            if action == 1:
+                if max_utility < 0:
+                    violation += -max_utility
+            else:
+                if max_utility >= 0:
+                    violation += max_utility + 1e-10
+        return violation
+
+    bounds = Bounds([0] * n_components, [np.inf] * n_components)
+    res = minimize(adjust_costs, cost_estimates, bounds=bounds, method='L-BFGS-B')
+    adjusted_costs = res.x
+    final_setting = np.hstack([p0, adjusted_costs.reshape(-1, 1)])
+    
+    if check_consistency(final_setting):
+        return final_setting
+    
+    return current_setting
+```

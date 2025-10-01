@@ -1,0 +1,68 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    n_candidates = 10
+    m_outcomes = v.shape[0]
+    L = len(content)
+    
+    def mini_lp_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        """Solve for agent outcome distribution p given wage vector w and utility u."""
+        m = len(w)
+        A_eq = [np.ones(m), v - w]
+        b_eq = [1.0, u]
+        bounds = [(0, 1)] * m
+        res = linprog(np.zeros(m), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    accepted_utils = []
+
+    for _, log in content.iterrows():
+        w_i = np.array(log['Contract'])
+        u_i = log['Principal Utility']
+        action = log['Agent Action']
+        
+        if action == 1:
+            p_i = mini_lp_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+                accepted_utils.append(u_i)
+        else:
+            p_i = mini_lp_p(w_i, -1e-6)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+
+    if not candidate_ps:
+        raise ValueError("No valid accepted logs to infer agent strategies.")
+
+    all_p = np.array(candidate_ps)
+    kmeans = KMeans(n_clusters=n_candidates, random_state=42, n_init=15).fit(all_p)
+    p0 = kmeans.cluster_centers_
+
+    assigns = np.full(L, -1, dtype=int)
+    cluster_utils = [[] for _ in range(n_candidates)]
+    
+    for i, (_, log) in enumerate(content.iterrows()):
+        w = np.array(log['Contract'])
+        dists = cdist(w.reshape(1, -1), p0, 'euclidean')
+        assigns[i] = int(np.argmin(dists))
+        if log['Agent Action'] == 1:
+            cluster_utils[assigns[i]].append(log['Principal Utility'])
+
+    c_costs = np.zeros(n_candidates)
+    for a in range(n_candidates):
+        if cluster_utils[a]:
+            c_costs[a] = np.mean(cluster_utils[a])
+        else:
+            c_costs[a] = 0
+
+    c_costs = np.clip(c_costs, 0, None)
+
+    agent_setting = np.hstack([p0, c_costs[:, np.newaxis]])
+    return agent_setting
+```

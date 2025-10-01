@@ -1,0 +1,10 @@
+Incorporate rejection constraints early, cluster candidate distributions, iteratively refine costs ensuring IR and IC satisfaction.
+Cluster on feasible outcome distributions matching utilities; enforce strict IR/IC via cost margins; normalize probabilities after clustering.
+Use tighter clustering with outcome-weighted distances, enforce full IR and IC LP constraints jointly, and refine costs globally.
+Use outcome distributions independent of contracts; apply robust clustering with inertia elbow; tighten cost margins for rejections.
+Incorporate stricter IC enforcement, handle noise via nearest cluster assignment, and add margin in cost for rejection consistency.
+Cluster contracts by shape, enforce IR/IC strictly, normalize distributions properly, and adaptively select action counts.
+Cluster contracts by normalized direction, assign accepted logs via cosine similarity, then solve LP for costs enforcing IR and IC.
+Cluster on inferred outcome distributions from LP feasibility; iteratively adjust costs enforcing IR and IC constraints strictly.
+Cluster contracts, not distributions; adapt eps in DBSCAN; minimize L1 deviation for p; separate IR and IC cost bounds.
+Cluster by contracts, enforce IR/IC via LP, use rejection constraints strictly, minimize costs, normalize probabilities carefully.

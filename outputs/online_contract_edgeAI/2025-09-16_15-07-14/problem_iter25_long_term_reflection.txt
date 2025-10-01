@@ -1,0 +1,1 @@
+Use GMM with BIC for clustering; deduplicate centers; refine costs using both accepted and rejected logs; enforce strict IR/IC to ensure validity and improve utility.

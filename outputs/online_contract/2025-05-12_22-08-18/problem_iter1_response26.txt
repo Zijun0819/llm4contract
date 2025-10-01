@@ -1,0 +1,197 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import KMeans
+from scipy.optimize import minimize, LinearConstraint
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting given principal's rewards v and historical logs content.
+    
+    Args:
+        v (np.ndarray): 1D array of principal's reward per outcome (length 5).
+        content (pd.DataFrame): DataFrame with columns:
+            - 'Contract': list or np.array of length 5 payment vector
+            - 'Principal Utility': float principal utility (0 if agent rejects)
+            - 'Agent Action': int 1 or -1 (accept or reject)
+            
+    Returns:
+        np.ndarray: matrix with rows = agent's possible actions:
+            - first 5 columns: outcome probabilities (sum to 1)
+            - last column: non-negative cost of that action
+            
+    Approach:
+        - Extract accepted and rejected contracts.
+        - From accepted contracts, estimate candidate outcome distributions via constrained LP.
+        - Use clustering (KMeans) over candidate distributions to get representative actions.
+        - Infer costs by enforcing IR constraints: utility(agent) >= 0 on accepted contracts assigned to that action.
+        - Enforce rejection contracts yield negative expected utility for all inferred actions.
+        - Solve a final constrained optimization problem to refine costs ensuring all IC/IR constraints hold.
+    """
+    m = v.shape[0]
+    L = len(content)
+    accepted_idx = content.index[content['Agent Action'] == 1].to_list()
+    rejected_idx = content.index[content['Agent Action'] == -1].to_list()
+    contracts = np.array(content['Contract'].tolist())  # shape (L,m)
+    principal_utils = np.array(content['Principal Utility'].tolist())  # shape (L,)
+    
+    if len(accepted_idx) == 0:
+        # No accepted contracts: agent always rejects, trivial setting with a random pure distribution with zero cost.
+        random_p = np.zeros(m)
+        random_p[0] = 1.0
+        return np.hstack([random_p.reshape(1,-1), np.array([[0.0]])])
+    
+    # Step 1: For each accepted contract, infer a feasible outcome distribution p 
+    # that satisfies p@v = principal utility + cost(agent) unknown, with expected wage = u_agent + cost
+    # Here, to estimate p, solve LP for p s.t. sum p = 1, p>=0, and maximize p@w_i (payment),
+    # since we don't know cost yet, the principal utility = p@v - cost, agent utility = p@w - cost >=0 ic
+    # Relaxation: For each accepted contract, approximate p by maximizing p@contract s.t. p@v >= principal_util + small margin
+    # This leads to multiple candidate p's aligned to contracts.
+    
+    def estimate_p_for_contract(w, min_pv):
+        # Solve LP: max p@w s.t sum p=1, p>=0, p@v >= min_pv
+        # Bounds: p in [0,1]
+        # p has length m
+        c_obj = -np.array(w)  # since linprog does minimization
+        A_eq = np.ones((1,m))
+        b_eq = np.array([1.0])
+        A_ub = -np.array([v])  # -p@v <= -min_pv  -> p@v >= min_pv
+        b_ub = -np.array([min_pv])
+        bounds = [(0,1) for _ in range(m)]
+        res = linprog(c_obj, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            return res.x
+        else:
+            # fallback trivial uniform distribution
+            return np.ones(m) / m
+    
+    estimated_ps = []
+    for i in accepted_idx:
+        w = contracts[i]
+        pu = principal_utils[i]
+        # as cost unknown, principal utility = p@v - cost(agent)
+        # approximate min_pv ~ pu (note: pu <= p@v since cost>=0), 
+        # to get plausible p's consistent with principal utility
+        p = estimate_p_for_contract(w, pu)
+        estimated_ps.append(p)
+    estimated_ps = np.array(estimated_ps)
+    
+    # Step 2: Cluster estimated_p vectors to get representative agent actions
+    # Number of clusters adaptively chosen based on elbow or fixed small number <=7
+    n_max = min(7, len(estimated_ps))
+    if n_max < 2:
+        n_clusters = 1
+    else:
+        # Use inertia to determine best clusters: simple elbow at 2 or 3 preferable
+        inertias = []
+        for k in range(1, n_max+1):
+            km = KMeans(n_clusters=k, random_state=0, n_init=10).fit(estimated_ps)
+            inertias.append(km.inertia_)
+        # heuristic: choose k where inertia drops prominently
+        diffs = np.diff(inertias)
+        if len(diffs) == 0:
+            n_clusters = 1
+        else:
+            # select first k where drop is less than half previous
+            n_clusters = 1
+            for i in range(1,len(diffs)):
+                if abs(diffs[i]) < abs(diffs[i-1])*0.5:
+                    n_clusters = i+1
+                    break
+            else:
+                n_clusters = n_max
+    # Run final clustering with chosen n_clusters
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10).fit(estimated_ps)
+    p_centers = kmeans.cluster_centers_  # shape (n_clusters,m)
+    
+    # Step 3: Assign each accepted contract to closest action/cluster by highest p_center @ contract
+    assigns = -np.ones(L, dtype=int)
+    p_centers_T = p_centers @ contracts.T  # shape (n_clusters, L)
+    for idx in accepted_idx:
+        # assign to action with highest expected wage for this contract
+        assigns[idx] = np.argmax(p_centers_T[:, idx])
+    
+    # Step 4: Infer costs vector c shape (n_clusters,)
+    # Constraints:
+    # - IR on accepted contracts belonging to each action: 
+    #   For each action a, for all accepted idx assigned to a:
+    #     p_a @ w_i >= c_a (agent expected wage >= cost)
+    # - Agent utility >=0 => p_a @ w_i - c_a >=0 => c_a <= p_a @ w_i
+    # - Also, Principal utility on accepted contracts:
+    #     principal_util_i = p_i@v - c_i ~ given, so cost <= p_a@v - principal_util_i for assigned contracts
+    # - Rejection contracts: For all rejected contracts j, for all a:
+    #     p_a @ w_j - c_a < 0 => c_a > p_a @ w_j
+    
+    # We form inequalities for c_a:
+    # For a in [0..n_clusters-1], define c_a as variable, stack in vector c_vars
+    
+    # Bounds: c_a >= 0
+    
+    n_a = n_clusters
+    INF = 1e10
+    
+    # Inequalities matrix & vector (A*c <= b)
+    A_ineq = []
+    b_ineq = []
+    
+    # From accepted contracts assigned to a: c_a <= p_a @ w_i for all i in assigned contracts for a
+    for a in range(n_a):
+        idx_a = np.where(assigns == a)[0]
+        if len(idx_a) > 0:
+            for i in idx_a:
+                # c_a <= p_a @ w_i  => c_a - p_a@w_i <=0
+                val = p_centers[a] @ contracts[i]
+                row = np.zeros(n_a)
+                row[a] = 1.0
+                A_ineq.append(row)
+                b_ineq.append(val)
+        else:
+            # no accepted assigned contracts: c_a <= +inf no constraint
+            pass
+    
+    # From rejection contracts: c_a >= p_a @ w_j + epsilon for all j in rejected and all a
+    # => -c_a <= - (p_a @ w_j + epsilon)
+    eps = 1e-4
+    for a in range(n_a):
+        for j in rejected_idx:
+            val = p_centers[a] @ contracts[j] + eps
+            row = np.zeros(n_a)
+            row[a] = -1.0
+            A_ineq.append(row)
+            b_ineq.append(-val)
+    
+    A_ineq = np.vstack(A_ineq) if len(A_ineq) > 0 else np.empty((0,n_a))
+    b_ineq = np.array(b_ineq) if len(b_ineq) > 0 else np.empty((0,))
+    
+    # Bounds for c_a: c_a >=0
+    bounds = [(0,None) for _ in range(n_a)]
+    
+    # Objective: minimize sum of c to avoid unnecessarily high costs (for better generalization)
+    c_obj = np.ones(n_a)
+    
+    # Solve LP: min c*c_obj s.t A_ineq c <= b_ineq and c >= 0
+    res = linprog(c_obj, A_ub=A_ineq, b_ub=b_ineq, bounds=bounds, method="highs")
+    
+    if not res.success:
+        # fallback: set cost as max over accepted lower bounds and 0 for each action
+        costs = np.zeros(n_a)
+        for a in range(n_a):
+            idx_a = np.where(assigns == a)[0]
+            if len(idx_a) > 0:
+                costs[a] = max([p_centers[a] @ contracts[i] for i in idx_a])
+            else:
+                costs[a] = 0.0
+        # Make sure costs exceed rejects infeasible wages plus margin, or leave as is
+    else:
+        costs = res.x
+    
+    # Step 5: Final agent setting rows: p_centers + costs column
+    agent_setting = np.hstack([p_centers, costs.reshape(-1,1)])
+    # Re-normalize p_centers row-wise to sum exactly to 1 (to correct numeric drift)
+    agent_setting[:,:m] = np.clip(agent_setting[:,:m], 0, None)
+    agent_setting[:,:m] /= np.maximum(agent_setting[:,:m].sum(axis=1, keepdims=True), 1e-10)
+    agent_setting[:,m] = np.maximum(agent_setting[:,m], 0.0)
+    
+    return agent_setting
+```

@@ -1,0 +1,1 @@
+Use finer DBSCAN eps with min_samples=1 for granular clustering. Enforce strict LP tolerances and normalization. Apply adaptive, small-step cost increments with early stopping. Implement robust noise assignment with stable tie-breaking. Increase cost refinement iterations and use LP fallback for stable, precise IR/IC satisfaction and higher utility.

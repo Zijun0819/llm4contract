@@ -1,0 +1,53 @@
+[*] Running ...
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_01.pkl with 5 instances.
+→ Best principal utility: 4.03773573646638
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:45: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}. These will be passed to HiGHS verbatim.
+  res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs', options={'tol':1e-13})
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 4.355849227215441
+→ Inferred agent&principal utility:    0.7366452195096231 3.179953768358346
+→ Agent and principal score:    0.7366452195096231 0.8577819681080339
+[*] Instance 0: 1.594427187617657
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_02.pkl with 5 instances.
+→ Best principal utility: 2.2999615997467355
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:45: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}. These will be passed to HiGHS verbatim.
+  res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs', options={'tol':1e-13})
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 3.6561247324771182
+→ Inferred agent&principal utility:    -0.873470201097788 1.7301587942230627
+→ Agent and principal score:    100 0.5698028055236728
+[*] Instance 1: 100.56980280552368
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_03.pkl with 5 instances.
+→ Best principal utility: 3.5682527283790857
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:45: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}. These will be passed to HiGHS verbatim.
+  res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs', options={'tol':1e-13})
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 2.587192301426591
+→ Inferred agent&principal utility:    0.7253926151742549 2.8428601232048307
+→ Agent and principal score:    0.7253926151742549 0.725392605174255
+[*] Instance 2: 1.4507852203485099
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_04.pkl with 5 instances.
+→ Best principal utility: 4.163132307600002
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:45: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}. These will be passed to HiGHS verbatim.
+  res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs', options={'tol':1e-13})
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 3.621287696425275
+→ Inferred agent&principal utility:    0.6230200505223795 3.5401122670776224
+→ Agent and principal score:    0.6230200505223795 0.62302004052238
+[*] Instance 3: 1.2460400910447595
+[*] Dataset loaded: E:\Coding\pythonProject\llm4contract\problems\dataset\train_05.pkl with 5 instances.
+→ Best principal utility: 3.4351046687638447
+E:\Coding\pythonProject\llm4contract\problems\gpt.py:45: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}. These will be passed to HiGHS verbatim.
+  res = linprog(c=c_obj, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs', options={'tol':1e-13})
+D:\Software\anaconda3\envs\llm4contract\lib\site-packages\scipy\optimize\_linprog_highs.py:355: OptimizeWarning: Unrecognized options detected: {'tol': 1e-12}
+  res = _highs_wrapper(c, A.indptr, A.indices, A.data, lhs, rhs,
+→ Best principal utility: 4.126179280670192
+→ Inferred agent&principal utility:    1.2417983806283583 2.0889206455346336
+→ Agent and principal score:    1.2417983806283583 1.346184023229211
+[*] Instance 4: 2.5879824038575694
+[*] Average:
+21.489807541678434

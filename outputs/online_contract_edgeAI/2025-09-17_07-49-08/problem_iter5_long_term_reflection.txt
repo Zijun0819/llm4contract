@@ -1,0 +1,2 @@
+Refine cost initialization with accepted/rejected contracts. Increase `n_candidates` and use `SLSQP` for probability constraints. Directly minimize utility for accepted contracts, considering principal's utility in the LP.
+

@@ -1,0 +1,1 @@
+Normalize contracts and probabilities before clustering; apply adaptive clustering with refined elbow detection; enforce tighter, adaptive IR/IC margins; robustly detect and remove empty clusters early; iteratively adjust costs for strict IR/IC satisfaction; ensure numeric stability via repeated normalization and convergence checks.

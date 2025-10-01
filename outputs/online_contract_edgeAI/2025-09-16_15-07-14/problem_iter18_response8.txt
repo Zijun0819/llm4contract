@@ -1,0 +1,115 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+from scipy.spatial.distance import cdist
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    v = np.array(v)
+    m = len(v)
+    
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+    
+    if not accepted_logs:
+        return np.hstack([np.eye(m), np.zeros((m, 1))])
+    
+    def solve_mini_lp(w, u_principal):
+        A_eq = np.vstack([np.ones(m), v - w])
+        b_eq = np.array([1.0, u_principal])
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * m, method='highs')
+        if res.success:
+            p = res.x
+            p = np.clip(p, 0, 1)
+            p_sum = p.sum()
+            if p_sum > 1e-12:
+                p /= p_sum
+                return p
+        return None
+    
+    ps_candidates = []
+    for log in accepted_logs:
+        w_arr = np.array(log['Contract'])
+        p_candidate = solve_mini_lp(w_arr, log['Principal Utility'])
+        if p_candidate is not None:
+            ps_candidates.append(p_candidate)
+    
+    if not ps_candidates:
+        return np.hstack([np.eye(m), np.zeros((m, 1))])
+    
+    all_p = np.array(ps_candidates)
+    n_samples = len(all_p)
+    n_components = min(max(2, n_samples // 5), 20)
+    
+    gmm = GaussianMixture(n_components=n_components, random_state=42, n_init=10, covariance_type='diag')
+    gmm.fit(all_p)
+    centers = gmm.means_
+    assignments = gmm.predict(all_p)
+    
+    centers = np.clip(centers, 0, 1)
+    row_sums = centers.sum(axis=1, keepdims=True)
+    centers[row_sums < 1e-12] = 1.0 / m
+    row_sums = centers.sum(axis=1, keepdims=True)
+    centers = centers / row_sums
+    
+    epsilon = 1e-10
+    costs = np.zeros(n_components)
+    for i in range(n_components):
+        cluster_indices = np.where(assignments == i)[0]
+        if len(cluster_indices) > 0:
+            contracts = np.array([accepted_logs[j]['Contract'] for j in cluster_indices])
+            utilities = contracts @ centers[i]
+            costs[i] = np.min(utilities) - epsilon
+    
+    if rejected_logs:
+        rejected_contracts = np.array([log['Contract'] for log in rejected_logs])
+        rejected_utilities = rejected_contracts @ centers.T
+        max_rejected = np.max(rejected_utilities, axis=0)
+        costs = np.maximum(costs, max_rejected + epsilon)
+    
+    costs = np.maximum(costs, 0)
+    
+    for i in range(n_components):
+        for log in accepted_logs:
+            w = np.array(log['Contract'])
+            utility_i = w @ centers[i] - costs[i]
+            other_utilities = w @ centers.T - costs
+            max_other = np.max(np.delete(other_utilities, i))
+            if utility_i < max_other - epsilon:
+                costs[i] = w @ centers[i] - max_other + epsilon
+    
+    for log in rejected_logs:
+        w = np.array(log['Contract'])
+        best_utility = np.max(w @ centers.T - costs)
+        if best_utility > -epsilon:
+            best_idx = np.argmax(w @ centers.T - costs)
+            costs[best_idx] = w @ centers[best_idx] + epsilon
+    
+    distances = cdist(centers, centers)
+    np.fill_diagonal(distances, np.inf)
+    merge_threshold = 0.05
+    merged = set()
+    new_centers = []
+    new_costs = []
+    for i in range(n_components):
+        if i in merged:
+            continue
+        group = [i]
+        for j in range(i+1, n_components):
+            if j not in merged and distances[i, j] < merge_threshold:
+                group.append(j)
+                merged.add(j)
+        new_center = np.mean(centers[group], axis=0)
+        new_center = new_center / new_center.sum()
+        new_cost = np.min(costs[group])
+        new_centers.append(new_center)
+        new_costs.append(new_cost)
+    
+    if new_centers:
+        centers = np.array(new_centers)
+        costs = np.array(new_costs)
+        n_components = len(centers)
+    
+    agent_setting = np.hstack([centers, costs.reshape(-1, 1)])
+    return agent_setting
+```

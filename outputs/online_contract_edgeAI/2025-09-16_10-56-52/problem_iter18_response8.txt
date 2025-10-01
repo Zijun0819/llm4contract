@@ -1,0 +1,154 @@
+```python
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    import numpy as np
+    import pandas as pd
+    from scipy.optimize import linprog, minimize
+    from sklearn.mixture import GaussianMixture
+    from sklearn.neighbors import KernelDensity
+    import warnings
+    warnings.filterwarnings('ignore')
+    
+    n_outcomes = len(v)
+    df = pd.DataFrame(content)
+    accepted = df[df['Agent Action'] == 1]
+    rejected = df[df['Agent Action'] == -1]
+    
+    if accepted.empty and rejected.empty:
+        default_p = np.ones(n_outcomes) / n_outcomes
+        default_c = 0.0
+        return np.hstack([default_p.reshape(1, -1), np.array([[default_c]])])
+    
+    candidate_probs = []
+    for _, row in accepted.iterrows():
+        w = np.array(row['Contract'])
+        u_p = row['Principal Utility']
+        A_eq = np.vstack([np.ones(n_outcomes), v - w])
+        b_eq = np.array([1.0, u_p])
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * n_outcomes, method='highs', options={'tol': 1e-10})
+        if res.success:
+            p = res.x
+            if np.all(p >= -1e-10) and np.isclose(np.sum(p), 1.0, atol=1e-10):
+                candidate_probs.append(np.clip(p, 0, 1))
+    
+    if not candidate_probs:
+        candidate_probs = [np.ones(n_outcomes) / n_outcomes]
+    
+    X = np.array(candidate_probs)
+    max_clusters = min(10, len(X))
+    if max_clusters < 1:
+        uniform_p = np.ones(n_outcomes) / n_outcomes
+        return np.hstack([uniform_p.reshape(1, -1), np.array([[0.0]])])
+    
+    bic_scores = []
+    for n in range(1, max_clusters + 1):
+        gmm = GaussianMixture(n_components=n, random_state=42, n_init=10, max_iter=200, tol=1e-10)
+        gmm.fit(X)
+        bic_scores.append(gmm.bic(X))
+    optimal_n = np.argmin(bic_scores) + 1
+    
+    gmm = GaussianMixture(n_components=optimal_n, random_state=42, n_init=10, max_iter=200, tol=1e-10)
+    gmm.fit(X)
+    action_centers = gmm.means_
+    
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.05)
+    kde.fit(action_centers)
+    log_dens = kde.score_samples(action_centers)
+    weights = np.exp(log_dens - np.max(log_dens))
+    weights /= weights.sum()
+    action_centers = action_centers * weights[:, np.newaxis]
+    action_centers = np.clip(action_centers, 0, 1)
+    row_sums = action_centers.sum(axis=1, keepdims=True)
+    action_centers = np.where(row_sums > 0, action_centers / row_sums, np.ones(n_outcomes) / n_outcomes)
+    
+    n_actions = action_centers.shape[0]
+    costs = np.zeros(n_actions)
+    
+    for i in range(n_actions):
+        p_i = action_centers[i]
+        min_accept_util = np.inf
+        for _, row in accepted.iterrows():
+            w = np.array(row['Contract'])
+            util = p_i @ w
+            if util < min_accept_util:
+                min_accept_util = util
+        max_reject_util = -np.inf
+        for _, row in rejected.iterrows():
+            w = np.array(row['Contract'])
+            util = p_i @ w
+            if util > max_reject_util:
+                max_reject_util = util
+        if np.isfinite(min_accept_util):
+            costs[i] = min_accept_util
+            if np.isfinite(max_reject_util) and max_reject_util >= min_accept_util:
+                costs[i] = max_reject_util + 1e-10
+        else:
+            costs[i] = max_reject_util + 1e-10 if np.isfinite(max_reject_util) else 0.0
+    
+    def objective(params):
+        p_flat = params[:n_actions * n_outcomes].reshape(n_actions, n_outcomes)
+        c = params[n_actions * n_outcomes:]
+        penalty = 0.0
+        ir_ic_weight = 1e6
+        
+        for _, row in df.iterrows():
+            w = np.array(row['Contract'])
+            agent_utils = np.array([p @ w - cost_val for p, cost_val in zip(p_flat, c)])
+            max_agent_util = np.max(agent_utils)
+            
+            if row['Agent Action'] == 1:
+                if max_agent_util < -1e-10:
+                    penalty += ir_ic_weight * (-max_agent_util)
+                best_action = np.argmax(agent_utils)
+                principal_util_actual = p_flat[best_action] @ (v - w)
+                penalty += (principal_util_actual - row['Principal Utility']) ** 2
+            else:
+                if max_agent_util >= -1e-10:
+                    penalty += ir_ic_weight * max_agent_util
+        
+        for i in range(n_actions):
+            p_sum = np.sum(p_flat[i])
+            if not np.isclose(p_sum, 1.0, atol=1e-10):
+                penalty += ir_ic_weight * (p_sum - 1.0) ** 2
+            neg_vals = np.sum(np.clip(-p_flat[i], 0, None))
+            penalty += ir_ic_weight * neg_vals
+            if c[i] < -1e-10:
+                penalty += ir_ic_weight * (-c[i])
+        
+        return penalty
+    
+    constraints = []
+    for i in range(n_actions):
+        constraints.append({'type': 'eq', 'fun': lambda x, idx=i: np.sum(x[idx*n_outcomes:(idx+1)*n_outcomes]) - 1.0})
+    
+    bounds = [(0, 1)] * (n_actions * n_outcomes) + [(0, None)] * n_actions
+    x0 = np.concatenate([action_centers.flatten(), costs])
+    
+    res = minimize(
+        objective,
+        x0,
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints,
+        options={'maxiter': 100000, 'ftol': 1e-10, 'disp': False}
+    )
+    
+    x_opt = res.x
+    p_opt = x_opt[:n_actions * n_outcomes].reshape(n_actions, n_outcomes)
+    c_opt = x_opt[n_actions * n_outcomes:]
+    
+    valid_rows = []
+    for i in range(n_actions):
+        if (np.all(p_opt[i] >= -1e-10) and 
+            np.isclose(np.sum(p_opt[i]), 1.0, atol=1e-10) and 
+            c_opt[i] >= -1e-10):
+            valid_rows.append(i)
+    
+    if not valid_rows:
+        uniform_p = np.ones(n_outcomes) / n_outcomes
+        return np.hstack([uniform_p.reshape(1, -1), np.array([[0.0]])])
+    
+    p_final = p_opt[valid_rows]
+    c_final = c_opt[valid_rows]
+    
+    return np.hstack([p_final, c_final.reshape(-1, 1)])
+```

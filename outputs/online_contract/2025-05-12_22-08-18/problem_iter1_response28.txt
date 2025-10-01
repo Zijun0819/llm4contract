@@ -1,0 +1,193 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.cluster import DBSCAN
+
+
+def agent_solver_v2(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    """
+    Infer a valid agent setting (set of actions as outcome distributions + cost)
+    consistent with historical contract logs, enforcing IR and IC constraints.
+
+    Parameters:
+        v: np.ndarray, shape (5,) - Principal's reward vector.
+        content: pd.DataFrame with columns:
+            'Contract': list/array of length 5 payment vector (w)
+            'Principal Utility': float, principal utility = E_v[payout] - agent cost if accepted; else 0
+            'Agent Action': int, 1 for accept, -1 for reject
+
+    Returns:
+        agent_setting: np.ndarray, shape (n_actions, 6)
+          - first 5 columns: outcome probabilities (sum to 1)
+          - last column: non-negative action cost
+    """
+
+    # Extract contracts, principal utils and agent actions
+    contracts = np.vstack(content['Contract'].to_numpy())  # (L,5)
+    p_utils = content['Principal Utility'].to_numpy()      # (L,)
+    a_actions = content['Agent Action'].to_numpy()         # (L,)
+    L, m = contracts.shape
+
+    # 1. Separate accepted and rejected logs
+    idx_accept = np.where(a_actions == 1)[0]
+    idx_reject = np.where(a_actions == -1)[0]
+
+    # 2. Heuristic to cluster agent outcome distributions p from accepted contracts
+    # For each accepted contract, solve LP:
+    #  max_p  p @ w subject to: p in simplex and principal utility = p@v - cost (unknown)
+    # We instead just guess that the agent selects some p so p@w >= cost (≥0).
+    # We'll approximately invert contracts by clustering contracts*principal utilities and assuming linearity.
+    
+    # Step 1: Infer approximate outcome distributions p_i for accepted logs via constrained LP
+    
+    inferred_ps = []
+    EPS = 1e-8
+
+    for idx in idx_accept:
+        w = contracts[idx]
+        # Objective: Find p ∈ simplex s.t p@w = max payout (w ≥0)
+        # With constraint v@p - c = principal utility => unknown c and p
+        # Here we solve: maximize p @ v s.t. p @ w == payout and p ∈ simplex
+        # We approximate p by solving max p@v s.t p@w = payout and sum p=1, p≥0
+        # This assumes agent tries to maximize principal reward from outcome dist for given payout.
+
+        payout = w @ np.ones(m)  # sum of contract payments (unused here)
+
+        # Use principal utility to limit cost and feasible p:
+        # The principal utility reported = v@payout - c, unknown c and p
+        # But actual agent utility = p@w - c >=0 if accept
+        # Here invert by fixing p@w close to max payout:
+        # Since p@w = expected agent payment, p satisfies constraints:
+        # sum p=1, p≥0, p@w approx max payout for accept. We relax.
+
+        # LP:  minimize -p@v  (maximize p@v)
+        # s.t sum p=1
+        #     p@w ≥ 0 (always true)
+        # We just maximize p@v ignoring payout equalities - a proxy.
+        c_lp = -v
+        A_eq = [np.ones(m)]
+        b_eq = [1.]
+        bounds = [(0, 1)] * m
+
+        res = linprog(c=c_lp, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        p_star = res.x if res.success else np.ones(m) / m
+        inferred_ps.append(p_star)
+
+    if len(inferred_ps) == 0:
+        # no accepted logs, fallback trivial uniform distr with zero cost
+        return np.hstack([np.eye(m), np.zeros((m, 1))])
+
+    inferred_ps = np.vstack(inferred_ps)
+
+    # 3. Cluster inferred ps using DBSCAN to find modes, adaptive number of actions
+    db = DBSCAN(eps=0.15, min_samples=2).fit(inferred_ps)
+    labels = db.labels_
+
+    # Filter noise points (-1), assign them to nearest cluster center by proximity
+    noise_idx = np.where(labels == -1)[0]
+    unique_labels = set(labels) - {-1}
+    if len(unique_labels) == 0:
+        unique_labels = {0}
+        labels[:] = 0
+
+    cluster_centers = []
+    for lab in unique_labels:
+        cluster_centers.append(inferred_ps[labels == lab].mean(axis=0))
+    cluster_centers = np.array(cluster_centers)  # shape (n_clusters, m)
+
+    # Assign noise points to closest cluster center by L2
+    for ni in noise_idx:
+        dists = np.linalg.norm(cluster_centers - inferred_ps[ni], axis=1)
+        labels[ni] = np.argmin(dists)
+
+    n_actions = len(unique_labels)
+    p_actions = cluster_centers.copy()
+    # Normalize each p to sum to 1 numerically stable
+    p_actions /= p_actions.sum(axis=1, keepdims=True)
+
+    # 4. Infer agent costs c for each action to explain observed accepts and rejects
+
+    # Constraints:
+    # IR: for each accepted log assigned to action a:
+    # p_a @ w_l - c_a >= 0  (agent utility ≥ 0 implies accept)
+    # IC: for each rejected log:
+    # max_a (p_a @ w_l - c_a) < 0 (agent rejects because utility negative for all actions)
+
+    # First assign each accepted log to best action under p_actions and contract payouts
+    action_costs = np.zeros(n_actions)
+    assign_accept = np.full(idx_accept.shape, -1, dtype=int)
+    for i, log_idx in enumerate(idx_accept):
+        w = contracts[log_idx]
+        utilities = p_actions @ w
+        assign_accept[i] = np.argmax(utilities)
+
+    # Set up LP to find costs that satisfy:
+    # For accepted logs: p_a@w - c_a >= 0  =>  c_a <= p_a@w
+    # For rejected logs: max_a (p_a@w - c_a) < 0 => p_a@w - c_a < 0 for all a
+
+    # Variables: c in R^{n_actions}, costs ≥ 0
+    # Constraints matrix and rhs:
+    # accepted logs => c[a] <= p_actions[a] @ w_l
+    # rejected logs => c[a] > p_actions[a] @ w_l forall a
+
+    # We transform these to LP inequalities:
+
+    # LP variables: c >= 0
+    # Maximize sum c (just to avoid trivial zero-cost but focus on feasibility)
+    # Subject to:
+    # For accepted: c_a <= min_{l assigned to a} p_a @ w_l
+    # For rejected: c_a > max_{l rejected} p_a @ w_l
+
+    # We generate bounds on costs from data:
+
+    c_lower_bounds = np.zeros(n_actions)
+    c_upper_bounds = np.full(n_actions, np.inf)
+
+    # Accepted constraints: costs <= min payout for their assigned accepted logs
+    for a in range(n_actions):
+        assigned_log_indices = np.where(assign_accept == a)[0]
+        if len(assigned_log_indices) > 0:
+            payoffs = []
+            for i in assigned_log_indices:
+                w = contracts[idx_accept[i]]
+                payoffs.append(p_actions[a].dot(w))
+            c_upper_bounds[a] = min(c_upper_bounds[a], min(payoffs))
+        else:
+            c_upper_bounds[a] = np.inf  # no accepted, no upper bound from acceptance
+
+    # Rejected constraints: costs > max agent payout for rejected logs (for all actions)
+    if len(idx_reject) > 0:
+        for a in range(n_actions):
+            payoffs_rej = [p_actions[a].dot(contracts[ridx]) for ridx in idx_reject]
+            max_payoff_rej = max(payoffs_rej) if payoffs_rej else -np.inf
+            # cost must be strictly above this to justify rejection, so c_a > max_payoff_rej
+            # To keep LP feasibility with strict inequalities, use c_a >= max_payoff_rej + small_eps
+            eps_bound = 1e-6
+            c_lower_bounds[a] = max(c_lower_bounds[a], max_payoff_rej + eps_bound)
+
+    # Check consistency of constraints:
+    for a in range(n_actions):
+        if c_lower_bounds[a] > c_upper_bounds[a] + 1e-8:
+            # Conflict in bounds means no feasible assignment; relax c_upper_bounds to +inf to regain feasibility
+            c_upper_bounds[a] = np.inf
+
+    # Build LP to find costs minimizing total cost (or any cost) subject to these bounds c_lower ≤ c ≤ c_upper
+
+    # Just pick costs within bounds: c = max(lower, min(upper, 0))
+    costs = np.maximum(c_lower_bounds, 0)
+    costs = np.minimum(costs, c_upper_bounds)  # keep feasible cost
+
+    # For costs still infinite upper bound, set zero if lower bound zero, else to lower bound
+    for a in range(n_actions):
+        if np.isinf(c_upper_bounds[a]):
+            if costs[a] < c_lower_bounds[a]:
+                costs[a] = c_lower_bounds[a]
+
+    # Post-process: ensure no negative cost
+    costs = np.maximum(costs, 0)
+
+    # 5. Return agent setting: n_actions rows, each with p and cost
+    agent_setting = np.hstack([p_actions, costs[:, None]])
+    return agent_setting
+```

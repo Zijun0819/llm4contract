@@ -1,0 +1,10 @@
+Use hierarchical clustering for stability; iteratively adjust costs ensuring IR and IC without over-penalizing; prioritize accepted logs.
+Use cosine metric for clustering; assign noise by similarity; iteratively refine costs ensuring all IR and IC constraints.
+Use hierarchical clustering for stable action groups; ensure strict IC by cost margin; iteratively refine costs for IR/IC.
+Incorporate rejected logs in clustering; use adaptive clustering (DBSCAN); iteratively adjust costs for IR and IC satisfaction.
+Use cosine metric for clustering; assign noise by similarity; refine costs iteratively ensuring IR and IC constraints.
+Incorporate agent utility constraints for rejected logs; use Euclidean metric clustering; iteratively adjust costs for IR and IC satisfaction.
+Incorporate rejected logs' IR constraints, use Euclidean metric for clustering, and iteratively balance costs for IR and IC compliance.
+Use adaptive clustering (e.g., DBSCAN), separate accept/reject LPs, refine costs iteratively with margin enforcement.
+Use agent utility constraints for rejects; prefer Euclidean clustering; refine costs iteratively with smaller steps; ensure probability normalization.
+Use hierarchical clustering; iteratively adjust costs for IR and IC; avoid rejected log proxy distributions; ensure cost monotonicity.

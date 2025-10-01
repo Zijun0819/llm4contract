@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\eval.py", line 13, in <module>
+    from problems.online_contract_edgeAI import gpt
+  File "E:\Coding\pythonProject\llm4contract\problems\online_contract_edgeAI\gpt.py", line 33
+    n_components_list = [i for i in range(1, min(n_candidates, len(candidate_ps), int(np.sqrt(len(candidate_ps))) + 1)]
+                                                                                                                      ^
+SyntaxError: closing parenthesis ']' does not match opening parenthesis '('

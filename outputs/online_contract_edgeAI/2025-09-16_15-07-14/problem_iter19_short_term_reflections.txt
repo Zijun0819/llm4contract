@@ -1,0 +1,12 @@
+Use more clusters, optimize cost assignment, and refine probability normalization.
+Improve clustering stability. Refine and deduplicate agent actions consistently.
+Refine cluster centers with GMM after KMeans; ensure costs respect rejections with tight epsilon margins.
+1. Use clustering diversity with both KMeans and GMM.
+2. Merge and refine unique centroids for better generalization.
+3. Enforce tight cost bounds from acceptance and rejection logs.
+Improve clustering parameters, enforce tighter IC constraints, and merge similar actions to enhance utility and compliance.
+Use Gaussian Mixture for clustering and carefully refine costs with acceptance and rejection constraints.
+Use refined clustering with GMM for distributions and ensure cost updates respect both accepted and rejected contracts.
+Use refined clustering with both KMeans and GMM to improve action differentiation and cost estimation.
+Focus on robust clustering and precise IC/IR enforcement; avoid over-adjustment of costs.
+Use clustering after Gaussian Mixture for refined costs; enforce stricter IC/IR with epsilon adjustments.

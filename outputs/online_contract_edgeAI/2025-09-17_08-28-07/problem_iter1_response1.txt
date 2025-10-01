@@ -1,0 +1,183 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+import itertools
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = len(v)
+    logs = content
+    
+    accepted_contracts = []
+    rejected_contracts = []
+    accepted_utilities = []
+    
+    for log in logs:
+        contract = np.array(log['Contract'])
+        action = log['Agent Action']
+        utility = log['Principal Utility']
+        
+        if action == 1:
+            accepted_contracts.append(contract)
+            accepted_utilities.append(utility)
+        else:
+            rejected_contracts.append(contract)
+    
+    if not accepted_contracts:
+        return np.array([[1/n_outcomes] * n_outcomes + [0.0]])
+    
+    accepted_contracts = np.array(accepted_contracts)
+    rejected_contracts = np.array(rejected_contracts) if rejected_contracts else np.empty((0, n_outcomes))
+    
+    # Dynamic action space sizing
+    n_logs = len(logs)
+    if n_logs < 20:
+        n_actions = 2
+    elif n_logs < 50:
+        n_actions = 3
+    elif n_logs < 100:
+        n_actions = 5
+    else:
+        n_actions = min(8, max(3, n_logs // 20))
+    
+    # Generate diverse probability distributions using multiple methods
+    candidate_probs = []
+    
+    # Method 1: Uniform and extreme distributions
+    uniform_p = np.ones(n_outcomes) / n_outcomes
+    candidate_probs.append(uniform_p)
+    
+    for i in range(min(n_outcomes, 3)):
+        extreme_p = np.zeros(n_outcomes)
+        extreme_p[i] = 1.0
+        candidate_probs.append(extreme_p)
+    
+    # Method 2: Revenue-based distributions
+    for alpha in [0.5, 1.0, 2.0]:
+        revenue_p = np.power(v, alpha)
+        if revenue_p.sum() > 0:
+            revenue_p = revenue_p / revenue_p.sum()
+            candidate_probs.append(revenue_p)
+    
+    # Method 3: Contract-based clustering
+    if len(accepted_contracts) >= n_actions:
+        try:
+            gmm = GaussianMixture(n_components=min(n_actions, len(accepted_contracts)), random_state=42)
+            gmm.fit(accepted_contracts)
+            
+            for mean in gmm.means_:
+                if np.all(mean >= 0):
+                    norm_mean = mean / mean.sum() if mean.sum() > 0 else uniform_p
+                    candidate_probs.append(norm_mean)
+        except:
+            pass
+    
+    # Method 4: Utility-weighted distributions  
+    if accepted_utilities:
+        weights = np.array(accepted_utilities)
+        weights = weights / weights.sum() if weights.sum() > 0 else np.ones(len(weights)) / len(weights)
+        
+        weighted_p = np.zeros(n_outcomes)
+        for i, contract in enumerate(accepted_contracts):
+            weighted_p += weights[i] * contract
+        
+        if weighted_p.sum() > 0:
+            weighted_p = weighted_p / weighted_p.sum()
+            candidate_probs.append(weighted_p)
+    
+    # Method 5: Random Dirichlet distributions
+    np.random.seed(42)
+    for _ in range(max(1, n_actions - len(candidate_probs))):
+        alpha_params = np.random.exponential(1.0, n_outcomes) + 0.1
+        dirichlet_p = np.random.dirichlet(alpha_params)
+        candidate_probs.append(dirichlet_p)
+    
+    # Select best n_actions distributions
+    candidate_probs = np.array(candidate_probs[:min(len(candidate_probs), n_actions * 2)])
+    
+    if len(candidate_probs) > n_actions:
+        kmeans = KMeans(n_clusters=n_actions, random_state=42, n_init=10)
+        cluster_labels = kmeans.fit_predict(candidate_probs)
+        final_probs = kmeans.cluster_centers_
+    else:
+        final_probs = candidate_probs
+        while len(final_probs) < n_actions:
+            noise_p = uniform_p + np.random.normal(0, 0.01, n_outcomes)
+            noise_p = np.maximum(noise_p, 0.001)
+            noise_p = noise_p / noise_p.sum()
+            final_probs = np.vstack([final_probs, noise_p])
+    
+    final_probs = np.maximum(final_probs, 1e-6)
+    for i in range(len(final_probs)):
+        final_probs[i] = final_probs[i] / final_probs[i].sum()
+    
+    # Compute costs using sophisticated optimization
+    costs = np.zeros(len(final_probs))
+    
+    for a in range(len(final_probs)):
+        p_a = final_probs[a]
+        
+        # IR constraint from accepted contracts
+        ir_cost = 0.0
+        if accepted_contracts.size > 0:
+            expected_payments = accepted_contracts @ p_a
+            if len(expected_payments) > 0:
+                ir_cost = np.min(expected_payments)
+        
+        # IC constraint from rejected contracts
+        ic_cost = 0.0
+        if rejected_contracts.size > 0:
+            rejected_payments = rejected_contracts @ p_a
+            if len(rejected_payments) > 0:
+                ic_cost = np.max(rejected_payments) + 1e-6
+        
+        # Revenue-based cost adjustment
+        revenue_factor = p_a @ v
+        revenue_cost = revenue_factor * 0.1
+        
+        # Combine constraints
+        base_cost = max(ir_cost, ic_cost, revenue_cost, 0.0)
+        
+        # Fine-tune using optimization
+        def cost_objective(c):
+            violations = 0
+            
+            # Check accepted contracts
+            for contract in accepted_contracts:
+                if p_a @ contract - c < 0:
+                    violations += (c - p_a @ contract) ** 2
+            
+            # Check rejected contracts  
+            for contract in rejected_contracts:
+                if p_a @ contract - c >= 0:
+                    violations += (p_a @ contract - c + 1e-6) ** 2
+            
+            return violations + 0.01 * c
+        
+        try:
+            result = minimize(cost_objective, base_cost, bounds=[(0, None)], method='L-BFGS-B')
+            if result.success:
+                costs[a] = max(result.x[0], base_cost)
+            else:
+                costs[a] = base_cost
+        except:
+            costs[a] = base_cost
+    
+    # Final validation and adjustment
+    for log in logs:
+        contract = np.array(log['Contract'])
+        action = log['Agent Action']
+        
+        utilities = final_probs @ contract - costs
+        best_action = np.argmax(utilities)
+        
+        if action == 1 and utilities[best_action] < 0:
+            costs[best_action] = max(0, final_probs[best_action] @ contract - 1e-6)
+        elif action == -1 and utilities[best_action] >= 0:
+            costs[best_action] = final_probs[best_action] @ contract + 1e-6
+    
+    agent_setting = np.hstack([final_probs, costs.reshape(-1, 1)])
+    return agent_setting
+```

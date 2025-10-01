@@ -1,0 +1,105 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import KernelDensity
+from scipy.special import logsumexp
+import warnings
+warnings.filterwarnings('ignore')
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = len(v)
+    logs = pd.DataFrame(content)
+    accepted = logs[logs['Agent Action'] == 1]
+    rejected = logs[logs['Agent Action'] == -1]
+    
+    if len(accepted) == 0:
+        return np.array([np.full(n_outcomes, 1/n_outcomes).tolist() + [0.0]])
+    
+    def infer_probabilities(w, u_p):
+        try:
+            c = w @ v - u_p
+            A_eq = np.vstack([np.ones(n_outcomes), w - v])
+            b_eq = np.array([1.0, c])
+            res = linprog(-v, A_eq=A_eq, b_eq=b_eq, bounds=[(0, 1)] * n_outcomes, method='highs-ds')
+            if res.success:
+                return res.x
+        except:
+            pass
+        return None
+    
+    candidate_probs = []
+    for _, row in accepted.iterrows():
+        w = np.array(row['Contract'])
+        u_p = row['Principal Utility']
+        p = infer_probabilities(w, u_p)
+        if p is not None:
+            candidate_probs.append(p)
+    
+    if not candidate_probs:
+        candidate_probs = [np.ones(n_outcomes) / n_outcomes]
+    
+    X = np.array(candidate_probs)
+    n_samples = len(X)
+    n_components = min(10, max(1, n_samples // 5))
+    
+    if n_samples > n_components:
+        bics = []
+        gmm_models = []
+        for n in range(1, n_components+1):
+            gmm = GaussianMixture(n_components=n, random_state=42, covariance_type='diag')
+            gmm.fit(X)
+            bics.append(gmm.bic(X))
+            gmm_models.append(gmm)
+        best_n = np.argmin(bics) + 1
+        best_gmm = gmm_models[best_n-1]
+        action_centers = best_gmm.means_
+        labels = best_gmm.predict(X)
+    else:
+        action_centers = X
+        labels = np.arange(n_samples)
+    
+    kde = KernelDensity(bandwidth=0.05, kernel='gaussian')
+    kde.fit(X)
+    log_dens = kde.score_samples(X)
+    weights = np.exp(log_dens - logsumexp(log_dens))
+    smoothed_center = np.sum(weights[:, None] * X, axis=0)
+    action_centers = np.vstack([action_centers, smoothed_center])
+    
+    n_actions = len(action_centers)
+    accepted_w = [np.array(w) for w in accepted['Contract']]
+    rejected_w = [np.array(w) for w in rejected['Contract']]
+    
+    min_utils = np.full(n_actions, np.inf)
+    for i, p in enumerate(action_centers):
+        for w in accepted_w:
+            util = p @ w
+            if util < min_utils[i]:
+                min_utils[i] = util
+    
+    max_utils = np.full(n_actions, -np.inf)
+    for i, p in enumerate(action_centers):
+        for w in rejected_w:
+            util = p @ w
+            if util > max_utils[i]:
+                max_utils[i] = util
+    
+    costs = []
+    for i in range(n_actions):
+        if np.isfinite(min_utils[i]) and np.isfinite(max_utils[i]):
+            cost = max(min_utils[i], max_utils[i] + 1e-10)
+        elif np.isfinite(min_utils[i]):
+            cost = min_utils[i]
+        elif np.isfinite(max_utils[i]):
+            cost = max_utils[i] + 1e-10
+        else:
+            cost = 0.0
+        costs.append(max(0.0, cost))
+    
+    action_centers = np.clip(action_centers, 0, 1)
+    action_centers = action_centers / action_centers.sum(axis=1, keepdims=True)
+    
+    agent_setting = np.hstack([action_centers, np.array(costs).reshape(-1, 1)])
+    return agent_setting
+```

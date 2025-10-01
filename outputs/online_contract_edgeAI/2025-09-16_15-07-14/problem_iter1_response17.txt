@@ -1,0 +1,91 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.cluster import KMeans
+from sklearn.mixture import BayesianGaussianMixture
+from sklearn.metrics import pairwise_distances_argmin_min
+
+def agent_solver(v: np.ndarray, content: pd.DataFrame) -> np.ndarray:
+    accepted_logs = content[content['Agent Action'] == 1]
+    rejected_logs = content[content['Agent Action'] == -1]
+    n_outcomes = len(v)
+    
+    if len(accepted_logs) == 0:
+        trivial_p = np.ones(n_outcomes) / n_outcomes
+        trivial_c = 0.0
+        return np.hstack([trivial_p.reshape(1, -1), np.array([[trivial_c]])])
+    
+    contracts = np.array(accepted_logs['Contract'].tolist())
+    principal_utils = accepted_logs['Principal Utility'].values
+    
+    def infer_ps(w, u):
+        res = linprog(w, A_eq=[np.ones(n_outcomes), v - w], b_eq=[1.0, u], bounds=[(0, 1)] * n_outcomes, method='highs')
+        return res.x if res.success else None
+    
+    inferred_ps = []
+    for w_i, u_i in zip(contracts, principal_utils):
+        p = infer_ps(w_i, u_i)
+        if p is not None:
+            inferred_ps.append(p)
+    
+    if len(inferred_ps) == 0:
+        trivial_p = np.ones(n_outcomes) / n_outcomes
+        trivial_c = 0.0
+        return np.hstack([trivial_p.reshape(1, -1), np.array([[trivial_c]])])
+    
+    P_inferred = np.array(inferred_ps)
+    
+    if len(P_inferred) > 10:
+        gmm = BayesianGaussianMixture(n_components=min(len(P_inferred)//5, 8), random_state=0, max_iter=1000).fit(P_inferred)
+        cluster_probs = gmm.predict_proba(P_inferred)
+        n_actions = gmm.n_components
+        cluster_centers = gmm.means_
+    else:
+        kmeans = KMeans(n_clusters=min(len(P_inferred)//2, 4), random_state=0, n_init=10).fit(P_inferred)
+        n_actions = kmeans.n_clusters
+        cluster_centers = kmeans.cluster_centers_
+    
+    assignments = pairwise_distances_argmin_min(P_inferred, cluster_centers)[0]
+    
+    def optimize_costs():
+        contracts_ext = np.zeros((len(accepted_logs), n_outcomes + 1))
+        contracts_ext[:, :n_outcomes] = contracts
+        constraints = []
+        for idx, row in accepted_logs.iterrows():
+            w = row['Contract']
+            p_assigned = cluster_centers[assignments[idx]]
+            constraints.append({'type': 'ineq', 'fun': lambda c, i=idx: p_assigned @ w - c[assignments[idx]]})
+        
+        if len(rejected_logs) > 0:
+            rej_contracts = np.array(rejected_logs['Contract'].tolist())
+            for w_rej in rej_contracts:
+                for a in range(n_actions):
+                    p_a = cluster_centers[a]
+                    constraints.append({'type': 'ineq', 'fun': lambda c, w=w_rej, p=p_a: c[a] - p @ w})
+        
+        def objective(c):
+            return np.sum(c)
+        
+        res = minimize(objective, x0=np.zeros(n_actions), constraints=constraints, bounds=[(0, None)] * n_actions, method='SLSQP')
+        return res.x if res.success else np.max([cluster_centers[a] @ contracts.min(axis=0) for a in range(n_actions)])
+
+    try:
+        costs = optimize_costs()
+    except:
+        costs = np.array([max(cluster_centers[a] @ contracts.min(axis=0), 0) for a in range(n_actions)])
+    
+    if np.any(np.isnan(costs)):
+        costs = np.array([max(cluster_centers[a] @ contracts.min(axis=0), 0) for a in range(n_actions)])
+    
+    agent_setting = np.hstack([cluster_centers, costs.reshape(-1, 1)])
+    rounded_setting = np.round(agent_setting, decimals=8)
+    rounded_setting[:, :-1] = rounded_setting[:, :-1] / rounded_setting[:, :-1].sum(axis=1, keepdims=True)
+    positive_mask = rounded_setting[:, -1] > 0
+    if not np.any(positive_mask):
+        for a in range(n_actions):
+            threshold = cluster_centers[a] @ contracts.min(axis=0)
+            rounded_setting[a, -1] = max(threshold, 0)
+    
+    return rounded_setting
+```

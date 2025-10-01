@@ -1,0 +1,10 @@
+Use tighter IR/IC margins, re-normalize probabilities post-adjustment, and robustly remove empty clusters for stability.
+Use unweighted KMeans on candidate distributions; apply tight IR/IC margins; avoid weight-based replication in clustering.
+Tighten IR/IC margins, robust cluster pruning, normalize probabilities post-cost adjustment, and refine cost upper bounds.
+Use tighter IR/IC margins, avoid sample-weighted clustering, and ensure robust empty cluster removal for stable inference.
+Use unweighted clustering on candidate distributions; tighten IR/IC margins; avoid weighted sample replication for stability.
+Use tighter margins, re-normalize probabilities after cost updates, and robustly remove empty clusters for stable inference.
+Normalize probabilities before cost calculation; use stricter IR/IC margins; avoid weighted KMeans to reduce bias.
+Add strict margins for IR/IC, robust empty cluster removal, and double normalization to improve agent setting validity.
+Normalize outcome distributions before cost calculations; use stricter IR/IC margins; robustly remove empty clusters; refine clustering elbow method.
+Use unweighted clustering, normalize distributions early, apply stricter IR/IC margins, and remove empty clusters promptly.

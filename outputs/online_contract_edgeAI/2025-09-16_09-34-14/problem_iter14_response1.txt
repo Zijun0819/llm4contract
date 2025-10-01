@@ -1,0 +1,72 @@
+```python
+import numpy as np
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_candidates = 10
+    m_outcomes = v.shape[0]
+    L = len(content)
+
+    def mini_lp_p(w: np.ndarray, u: float) -> np.ndarray | None:
+        m = len(w)
+        A_eq = [np.ones(m), v - w]
+        b_eq = [1.0, u]
+        bounds = [(0, 1)] * m
+        res = linprog(-w, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        return res.x if res.success else None
+
+    candidate_ps = []
+    for log in content:
+        if log['Agent Action'] == 1:
+            w_i = np.array(log['Contract'])
+            u_i = log['Principal Utility']
+            p_i = mini_lp_p(w_i, u_i)
+            if p_i is not None:
+                candidate_ps.append(p_i)
+
+    if not candidate_ps:
+        raise ValueError("No valid accepted logs to infer agent strategies.")
+
+    all_p = np.array(candidate_ps)
+
+    n_components = np.arange(1, n_candidates + 1)
+    models = [GaussianMixture(n_components=i, random_state=0, n_init=10, max_iter=1000).fit(all_p) for i in n_components]
+    bic = [m.bic(all_p) for m in models]
+    best_n = n_components[np.argmin(bic)]
+    gmm = GaussianMixture(n_components=best_n, random_state=0, n_init=10, max_iter=1000).fit(all_p)
+    p0 = gmm.means_
+
+    assigns = np.full(L, -1, dtype=int)
+    for i, log in enumerate(content):
+        if log['Agent Action'] == 1:
+            w = np.array(log['Contract'])
+            assigns[i] = int(np.argmax(p0 @ w))
+
+    c_ir = np.zeros(best_n)
+    for a in range(best_n):
+        idx = np.where(assigns == a)[0]
+        if idx.size > 0:
+            wages = np.array([content[i]['Contract'] for i in idx]).T
+            c_ir[a] = p0[a] @ wages.min(axis=1)
+        else:
+            c_ir[a] = 0.0
+
+    rej_idx = [i for i, log in enumerate(content) if log['Agent Action'] == -1]
+    if rej_idx:
+        wages_rej = np.array([content[i]['Contract'] for i in rej_idx]).T
+        rej_utils = p0 @ wages_rej
+        c_rej = rej_utils.max(axis=0)
+    else:
+        c_rej = np.zeros(best_n)
+
+    c_init = np.maximum(c_ir, c_rej)
+
+    alpha = 0.01
+    c_init = (1 - alpha) * c_init + alpha * np.mean(c_init)
+
+    c_init = np.clip(c_init, 0, None)
+
+    agent_setting = np.hstack([p0, c_init[:, np.newaxis]])
+    return agent_setting
+```

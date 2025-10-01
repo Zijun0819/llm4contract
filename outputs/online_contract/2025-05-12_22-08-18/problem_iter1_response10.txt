@@ -1,0 +1,166 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog, minimize
+from sklearn.mixture import GaussianMixture
+
+
+def agent_solver(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix for online contract design.
+    Returns an n x 6 matrix:
+      - first 5 cols: outcome distributions (sum to 1)
+      - last col: agent cost (non-negative)
+    """
+    m_outcomes = v.size
+    L = len(content)
+
+    # Extract data arrays
+    contracts = np.array([log['Contract'] for log in content])  # shape (L,5)
+    actions = np.array([log['Agent Action'] for log in content])  # shape (L,)
+    utilities = np.array([log['Principal Utility'] for log in content])  # shape (L,)
+
+    accept_idx = np.where(actions == 1)[0]
+    reject_idx = np.where(actions == -1)[0]
+
+    # If no accepted logs, fallback trivial: single uniform action, cost 0
+    if accept_idx.size == 0:
+        return np.hstack([np.ones((1, m_outcomes)) / m_outcomes, [[0.0]]])
+
+    accepted_contracts = contracts[accept_idx]  # (A, 5)
+    accepted_utils = utilities[accept_idx]      # (A,)
+
+    # === Step 1: Infer plausible outcome distributions p for accepted contracts ===
+    # Solve LP per accepted contract to find outcome dist p where expected wage=p@w ~ principal utility
+    # and p is a prob dist (sum=1, p>=0)
+    def solve_p_given_w_u(w, u):
+        # Minimize ||p||_1 under Aeq constraints
+        # Problem: 
+        #   sum p_i = 1
+        #   p @ w == u (agent's expected wage equals principal utility)
+        #   p_i >= 0
+        # We'll minimize sum over p just for feasibility using linprog with dummy objective.
+        A_eq = np.vstack([np.ones(m_outcomes), w])
+        b_eq = np.array([1.0, u])
+        bounds = [(0, 1) for _ in range(m_outcomes)]
+        res = linprog(
+            c=np.zeros(m_outcomes),
+            A_eq=A_eq,
+            b_eq=b_eq,
+            bounds=bounds,
+            method='highs',
+        )
+        if res.success:
+            return res.x
+        else:
+            # fallback: least-squares proj on {p>=0, sum=1} ignoring equality p@w = u
+            from scipy.optimize import nnls
+            # Least squares for p: minimize ||p @ w - u|| with p criteria
+            # Here try nnls to get p so that p@w close u
+            res = nnls(np.vstack([np.ones(m_outcomes), w]).T, np.array([1.0, u]))
+            p = res[0]
+            p = np.clip(p, 0, None)
+            p /= (p.sum() + 1e-10)
+            return p
+
+    inferred_ps = []
+    valid_indices = []
+    for i in accept_idx:
+        w = contracts[i]
+        u = utilities[i]
+        p = solve_p_given_w_u(w, u)
+        if np.all(p >= -1e-8) and abs(p.sum() - 1) < 1e-6:
+            inferred_ps.append(p)
+            valid_indices.append(i)
+    if len(inferred_ps) == 0:
+        # fallback single uniform action with 0 cost
+        return np.hstack([np.ones((1, m_outcomes)) / m_outcomes, [[0.0]]])
+    inferred_ps = np.array(inferred_ps)
+
+    # === Step 2: Model latent agent action types with GMM on inferred outcome distributions ===
+    # Choose number of components by BIC heuristic (up to max 10)
+    bic_scores = []
+    max_K = min(10, len(inferred_ps))
+    for K in range(1, max_K + 1):
+        gmm = GaussianMixture(K, covariance_type='full', random_state=0).fit(inferred_ps)
+        bic_scores.append(gmm.bic(inferred_ps))
+    K_opt = (np.argmin(bic_scores) + 1) if bic_scores else 1
+    gmm = GaussianMixture(K_opt, covariance_type='full', random_state=0).fit(inferred_ps)
+    cluster_probs = gmm.means_
+    cluster_probs = np.clip(cluster_probs, 0, None)
+    cluster_probs /= cluster_probs.sum(axis=1, keepdims=True)
+
+    # === Step 3: Assign each accepted log's contract to closest cluster (action) by expected wage p @ w ===
+    assigned_actions = np.full(L, -1, dtype=int)
+    for i, log in enumerate(content):
+        w = np.array(log['Contract'])
+        # assign accepted logs
+        if actions[i] == 1:
+            # find max expected wage
+            values = cluster_probs @ w
+            assigned_actions[i] = int(np.argmax(values))
+
+    # === Step 4: Calculate agent costs ///
+    # Cost ensures IR: for accepted, expected wage >= cost; for rejected, expected wage < cost
+    # This induces constraints:
+    #  p_a @ w_i - c_a ≥ 0  for accepted (where action a assigned to log i)
+    #  max_a (p_a @ w_j - c_a) < 0  for rejected log j
+
+    # For accepted logs: gather constraints c_a <= p_a @ w_i
+    # For rejected logs: ensure p_a @ w_j - c_a < 0 for all a (-> c_a > p_a @ w_j)
+    A_ub = []
+    b_ub = []
+
+    # Build inequalities for agent costs c = [c_0, ..., c_(K_opt-1)]
+    # Accepted logs constraints: c_a <= p_a @ w_i  ->  c_a - p_a@w_i <= 0
+    # Or transformed for linprog: -c_a + 0 <= -p_a@w_i (but variables: c_a only)
+    # Let's build bounds for each c_a as upper bound of min p_a@w_i over assigned accepted logs
+
+    # Compute upper bounds per action from data
+    c_upper_bounds = np.full(K_opt, np.inf)
+    for a in range(K_opt):
+        assigned_i = np.where(assigned_actions == a)[0]
+        if assigned_i.size > 0:
+            vals = np.array([cluster_probs[a] @ contracts[i] for i in assigned_i])
+            c_upper_bounds[a] = vals.min()  # IR: cost ≤ min expected wage for assigned accepted logs
+
+    # Rejected logs constraints: cost > max_a {p_a@w_j}
+    # So cost for each a > max over rejected logs of p_a@w_j (lower bound)
+    # Compute lower bounds per action
+    c_lower_bounds = np.zeros(K_opt)
+    if reject_idx.size > 0:
+        for a in range(K_opt):
+            vals = np.array([cluster_probs[a] @ contracts[j] for j in reject_idx])
+            if vals.size > 0:
+                c_lower_bounds[a] = vals.max()
+    else:
+        c_lower_bounds.fill(0.0)
+
+    # Now costs must satisfy: c_lower_bounds ≤ c ≤ c_upper_bounds, and c ≥ 0
+
+    # Fix feasibility: if c_upper_bounds < c_lower_bounds for some a, must fix by setting c = max of two (cost)
+    final_costs = np.maximum(c_lower_bounds, 0)
+    for a in range(K_opt):
+        if c_upper_bounds[a] < final_costs[a]:
+            # Relax upper bound to final_cost[a] to keep feasibility
+            c_upper_bounds[a] = final_costs[a]
+
+    # Choose costs as midpoint between bounds for stability, or just c = c_lower_bounds + epsilon
+    costs = np.clip((final_costs + c_upper_bounds) / 2, final_costs, c_upper_bounds)
+    costs = np.maximum(costs, 0)
+
+    # === Step 5: Postprocess to ensure outcome distributions sum to 1 and costs ≥ 0 ===
+    for a in range(K_opt):
+        cluster_probs[a] = np.clip(cluster_probs[a], 0, None)
+        s = cluster_probs[a].sum()
+        if s < 1e-12:
+            cluster_probs[a] = np.ones(m_outcomes) / m_outcomes
+        else:
+            cluster_probs[a] /= s
+        costs[a] = max(costs[a], 0)
+
+    # Combine
+    agent_setting = np.hstack([cluster_probs, costs.reshape(-1, 1)])
+
+    return agent_setting
+```

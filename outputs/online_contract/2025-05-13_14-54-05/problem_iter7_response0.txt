@@ -1,0 +1,193 @@
+```python
+import numpy as np
+from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import normalize
+from scipy.optimize import linprog
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    """
+    Infer a valid agent setting matrix (actions x [probabilities over 5 outcomes + cost])
+    that explains all historical interactions under IR and IC constraints.
+
+    Args:
+        v: np.ndarray of shape (5,), principal's reward vector for 5 outcomes.
+        content: list of dicts, each with keys 'Contract' (list of 5 float payments),
+                 'Principal Utility' (float), and 'Agent Action' (1 or -1).
+
+    Returns:
+        np.ndarray of shape (n_actions, 6), rows are [p1,...,p5,cost]
+    """
+    m = v.shape[0]  # number of outcomes (expected 5)
+    L = len(content)
+
+    # Separate accepted and rejected logs
+    accepted_logs = [log for log in content if log['Agent Action'] == 1]
+    rejected_logs = [log for log in content if log['Agent Action'] == -1]
+
+    # If no accepted logs, return trivial uniform distribution with zero cost
+    if not accepted_logs:
+        p_uniform = np.ones(m) / m
+        return np.array([np.append(p_uniform, 0.0)])
+
+    # Extract accepted contracts (payments)
+    accepted_contracts = np.array([log['Contract'] for log in accepted_logs])
+    accepted_contracts = np.clip(accepted_contracts, 0, None)  # ensure nonnegative
+
+    # Normalize contracts by their L1 norm for clustering stability
+    contract_norms = np.linalg.norm(accepted_contracts, ord=1, axis=1, keepdims=True)
+    contract_norms[contract_norms < 1e-12] = 1.0  # avoid division by zero
+    accepted_normed = accepted_contracts / contract_norms
+
+    # Adaptive DBSCAN clustering on normalized accepted contracts with L1 metric
+    # Use elbow method on eps parameter to find reasonable eps
+    # eps candidates from 0.01 to 0.3 step 0.01
+    best_eps = None
+    best_labels = None
+    best_n_clusters = 0
+    max_eps = 0.3
+    min_eps = 0.01
+    eps_step = 0.01
+    min_samples = 3
+
+    for eps in np.arange(min_eps, max_eps + eps_step, eps_step):
+        clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='manhattan')
+        labels = clustering.fit_predict(accepted_normed)
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        if n_clusters >= 1:
+            # Compute average cluster radius weighted by cluster size
+            avg_radii = []
+            for c in range(n_clusters):
+                cluster_points = accepted_normed[labels == c]
+                center = cluster_points.mean(axis=0)
+                dists = np.sum(np.abs(cluster_points - center), axis=1)  # L1 distances
+                avg_radii.append(np.mean(dists))
+            avg_radius = np.mean(avg_radii)
+            # Choose eps that yields smallest avg_radius with at least one cluster
+            if best_eps is None or avg_radius < best_eps:
+                best_eps = avg_radius
+                best_labels = labels
+                best_n_clusters = n_clusters
+        # Stop early if avg_radius is very small (tight clusters)
+        if best_eps is not None and best_eps < 0.02:
+            break
+
+    # If no cluster found, fallback to one cluster (all accepted contracts)
+    if best_labels is None or best_n_clusters == 0:
+        best_labels = np.zeros(len(accepted_contracts), dtype=int)
+        best_n_clusters = 1
+
+    # Assign noise points (-1) to nearest cluster by L1 distance
+    noise_idx = np.where(best_labels == -1)[0]
+    if noise_idx.size > 0 and best_n_clusters > 0:
+        cluster_centers_normed = np.zeros((best_n_clusters, m))
+        for c in range(best_n_clusters):
+            cluster_centers_normed[c] = accepted_normed[best_labels == c].mean(axis=0)
+        for i in noise_idx:
+            dists = np.sum(np.abs(cluster_centers_normed - accepted_normed[i]), axis=1)
+            best_labels[i] = np.argmin(dists)
+
+    # Recompute cluster centers on original scale weighted by cluster size
+    ps = np.zeros((best_n_clusters, m))
+    for c in range(best_n_clusters):
+        cluster_points = accepted_contracts[best_labels == c]
+        if cluster_points.shape[0] == 0:
+            # fallback uniform distribution
+            ps[c] = np.ones(m) / m
+        else:
+            center = cluster_points.mean(axis=0)
+            # normalize to probability distribution
+            center = np.clip(center, 0, None)
+            s = center.sum()
+            if s < 1e-12:
+                ps[c] = np.ones(m) / m
+            else:
+                ps[c] = center / s
+
+    # Collect all contracts (accepted + rejected)
+    if rejected_logs:
+        rejected_contracts = np.array([log['Contract'] for log in rejected_logs])
+        rejected_contracts = np.clip(rejected_contracts, 0, None)
+    else:
+        rejected_contracts = np.empty((0, m))
+
+    # Construct IR constraints from accepted contracts:
+    # For each accepted contract w assigned to cluster c:
+    # p_c @ w - cost_c >= 0  => cost_c <= p_c @ w
+    # We will use these as upper bounds for cost_c
+
+    # Assign each accepted contract to closest cluster center by L1 distance on normalized contracts
+    dist_to_centers = np.sum(np.abs(accepted_normed[:, None, :] - normalize(ps, norm='l1')[None, :, :]), axis=2)
+    assigned_actions = dist_to_centers.argmin(axis=1)
+
+    # For each action, gather minimal p_c @ w from assigned accepted contracts
+    max_cost_upper = np.full(best_n_clusters, np.inf)
+    for c in range(best_n_clusters):
+        idxs = np.where(assigned_actions == c)[0]
+        if idxs.size > 0:
+            pay_ins = np.array([ps[c] @ accepted_contracts[i] for i in idxs])
+            max_cost_upper[c] = pay_ins.min()
+        else:
+            # no accepted contract assigned, no upper bound from IR
+            max_cost_upper[c] = np.inf
+
+    # Construct IC constraints from rejected contracts:
+    # For each rejected contract w:
+    # max_c (p_c @ w - cost_c) < 0
+    # => p_c @ w - cost_c < 0 for all c
+    # => cost_c > p_c @ w for all c, for each rejected contract w
+
+    # We will enforce strict inequality by margin epsilon
+    epsilon = 1e-6
+
+    # Prepare linear program to find costs satisfying:
+    # cost_c <= max_cost_upper[c] (from IR)
+    # cost_c >= max_{w in rejected} (p_c @ w) + epsilon (from IC)
+    # cost_c >= 0
+
+    # If no rejected contracts, just set costs to min(max_cost_upper, 0)
+    if rejected_contracts.shape[0] == 0:
+        costs = np.minimum(max_cost_upper, 0)
+        costs = np.maximum(costs, 0)
+    else:
+        # Compute p_c @ w for all c,w
+        rej_pay_ins = ps @ rejected_contracts.T  # shape (actions, rejected_count)
+        # For each action c, lower bound on cost_c is max over rejected p_c @ w + epsilon
+        min_cost_lower = rej_pay_ins.max(axis=1) + epsilon
+
+        # Linear program to find costs c minimizing sum of costs (arbitrary objective)
+        # subject to: min_cost_lower <= cost_c <= max_cost_upper (if finite), cost_c >= 0
+
+        # Bounds for each cost variable
+        bounds = []
+        for c in range(best_n_clusters):
+            lb = max(min_cost_lower[c], 0)
+            ub = max_cost_upper[c]
+            if np.isinf(ub):
+                ub = None
+            if lb > ub if ub is not None else False:
+                # Infeasible bounds, fallback: set cost = lb (relax)
+                bounds.append((lb, lb))
+            else:
+                bounds.append((lb, ub))
+
+        # Objective: minimize sum(costs)
+        c_obj = np.ones(best_n_clusters)
+
+        # No inequality constraints needed, bounds enforce constraints
+        res = linprog(c=c_obj, bounds=bounds, method='highs')
+
+        if res.success:
+            costs = res.x
+        else:
+            # fallback: costs = max(min_cost_lower, 0)
+            costs = np.maximum(min_cost_lower, 0)
+            # clamp to max_cost_upper if finite
+            for c in range(best_n_clusters):
+                if not np.isinf(max_cost_upper[c]):
+                    costs[c] = min(costs[c], max_cost_upper[c])
+
+    # Final agent setting matrix: each row [p1, ..., p5, cost]
+    agent_setting = np.hstack([ps, costs.reshape(-1, 1)])
+
+    return agent_setting
+```

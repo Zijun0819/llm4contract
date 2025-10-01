@@ -1,0 +1,10 @@
+Use linear programming for accurate probability inference; enforce stricter IC constraints with higher penalty weights.
+Refine cost bounds using epsilon tolerance and optimize penalty-weighted objective efficiently.
+Use linear programming for exact probability inference; penalize constraint violations heavily; refine cost bounds with tighter tolerances.
+Better initialization, refined constraints, and improved optimization handling.
+Use linear programming for efficiency; refine constraint handling and action clustering.
+Focus on tighter cost bounds using both accepted and rejected logs, and streamline optimization constraints.
+Refine cost bounds using rejected logs and handle constraints with penalties carefully.
+Use linear programming for efficiency, enforce tighter constraints with penalties, and refine bounds carefully.
+Enforce IC constraints strictly. Use higher penalty weights. Refine cost bounds with tighter thresholds.
+Use tighter cost bounds, precise constraint handling, and robust clustering.

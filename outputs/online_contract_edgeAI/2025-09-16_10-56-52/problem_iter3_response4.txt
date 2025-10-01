@@ -1,0 +1,88 @@
+```python
+import numpy as np
+import pandas as pd
+from scipy.optimize import linprog
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import KernelDensity
+import cvxpy as cp
+
+def agent_solver_v2(v: np.ndarray, content: list[dict]) -> np.ndarray:
+    n_outcomes = 12
+    logs = pd.DataFrame(content)
+    accepted = logs[logs['Agent Action'] == 1]
+    rejected = logs[logs['Agent Action'] == -1]
+    
+    def solve_min_lp(w, u_threshold):
+        c = -w
+        A_eq = np.vstack([np.ones(n_outcomes), v - w])
+        b_eq = np.array([1.0, u_threshold])
+        bounds = [(0, 1) for _ in range(n_outcomes)]
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        if res.success:
+            return res.x
+        return None
+    
+    candidate_p = []
+    for idx, row in accepted.iterrows():
+        w = np.array(row['Contract'])
+        u_actual = row['Principal Utility']
+        p_sol = solve_min_lp(w, u_actual)
+        if p_sol is not None:
+            candidate_p.append(p_sol)
+    
+    if not candidate_p:
+        candidate_p = [np.ones(n_outcomes) / n_outcomes]
+    
+    X = np.array(candidate_p)
+    n_components_range = range(1, min(10, len(X)+1))
+    best_bic = np.inf
+    best_gmm = None
+    for n_components in n_components_range:
+        gmm = GaussianMixture(n_components=n_components, random_state=0)
+        gmm.fit(X)
+        bic = gmm.bic(X)
+        if bic < best_bic:
+            best_bic = bic
+            best_gmm = gmm
+    
+    action_centers_raw = best_gmm.means_
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(X)
+    log_probs = kde.score_samples(action_centers_raw)
+    action_centers = np.exp(log_probs[:, None]) * action_centers_raw
+    action_centers = action_centers / action_centers.sum(axis=1, keepdims=True)
+    n_actions = action_centers.shape[0]
+    
+    accepted_contracts = [np.array(row['Contract']) for _, row in accepted.iterrows()]
+    rejected_contracts = [np.array(row['Contract']) for _, row in rejected.iterrows()]
+    
+    c = cp.Variable(n_actions)
+    constraints = []
+    
+    for a in range(n_actions):
+        p_a = action_centers[a]
+        for w in accepted_contracts:
+            constraints.append(p_a @ w - c[a] >= 0)
+        for w in rejected_contracts:
+            constraints.append(p_a @ w - c[a] <= -1e-8)
+        for a_prime in range(n_actions):
+            if a != a_prime:
+                for w in accepted_contracts:
+                    constraints.append(p_a @ w - c[a] >= p_a_prime @ w - c[a_prime] - 1e-8)
+    
+    for a in range(n_actions):
+        constraints.append(c[a] >= 0)
+    
+    objective = cp.Minimize(cp.sum(c))
+    prob = cp.Problem(objective, constraints)
+    try:
+        prob.solve(solver=cp.ECOS, abstol=1e-8, reltol=1e-8, feastol=1e-8)
+        if prob.status == cp.OPTIMAL:
+            final_costs = c.value
+        else:
+            final_costs = np.zeros(n_actions)
+    except:
+        final_costs = np.zeros(n_actions)
+    
+    agent_setting = np.hstack([action_centers, final_costs.reshape(-1, 1)])
+    return agent_setting
+```

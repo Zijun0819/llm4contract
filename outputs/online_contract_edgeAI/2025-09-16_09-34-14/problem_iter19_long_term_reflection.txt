@@ -1,0 +1,1 @@
+Use regularization, dimensionality reduction, and non-negativity constraints to optimize GaussianMixture and prevent overfitting.
