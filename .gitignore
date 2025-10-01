@@ -2,4 +2,4 @@
 .env
 *.key
 *.secret
-config/*.json
+*.pth
